@@ -1,0 +1,34 @@
+/* Fonte - Space Grotesk via Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  /* Fonte padrão */
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+
+  --color-bg: #09090B;
+  --color-surface: #18181B;
+  --color-surface-hover: #27272A;
+
+  /* Bordas */
+  --color-border: #27272A;
+
+  /* Textos */
+  --color-text: #FAFAFA;
+  --color-muted: #A1A1AA;
+
+  --color-accent: #3B82F6;
+  --color-accent-hover: #2563EB;
+
+  --color-success: #22C55E;
+  --color-danger: #EF4444;
+  --color-warning: #F59E0B;  
+}
+
+body {
+  font-family: "Space Grotesk", sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+}
