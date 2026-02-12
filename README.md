@@ -1,16 +1,35 @@
-# React + Vite
+# monor.me
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Fintech pessoal para gerenciamento de investimentos em Fundos Imobiliários (FIIs).
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 📊 **Dashboard** — Visão geral com métricas de investimentos
+- 💼 **Carteira** — Gerenciamento completo de FIIs (CRUD)
+- 🧮 **Cálculo automático** — Renda mensal baseada no Dividend Yield
+- ⌨️ **Command Palette** — Navegação rápida com `Ctrl+K`
+- 💾 **Persistência local** — Dados salvos no navegador
+- 🌙 **Dark mode** — Interface premium e elegante
 
-## React Compiler
+## 🚀 Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React 19** — Biblioteca UI
+- **Vite 7** — Build tool ultrarrápido
+- **Tailwind CSS 4** — Estilização utility-first
+- **React Router** — Navegação SPA
+- **LocalStorage** — Persistência de dados
 
-## Expanding the ESLint configuration
+## 📦 Instalação
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+# Clone o repositório
+git clone https://github.com/leonardoamsilva/monor.me.git
+
+# Entre na pasta
+cd monor.me
+
+# Instale as dependências
+npm install
+
+# Rode o projeto
+npm run dev
