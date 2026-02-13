@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import { formatCurrency } from '../utils/format';
@@ -12,6 +13,15 @@ function FiiList({fiis, setFiis}) {
   const [error, setError] = useState("");
   const [editIndex, setEditIndex] = useState(null);
   const [dividendYield, setDividendYield] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tickerInputRef = useRef(null);
+
+  useEffect(() => {
+    if(searchParams.get("focus") === "true") {
+      tickerInputRef.current?.focus();
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const yieldAnual = (dividendYield / 12 / 100) * precoMedio * cotas;
@@ -21,6 +31,8 @@ function FiiList({fiis, setFiis}) {
   function handleAddFii(e) {
     e.preventDefault();
     setError("");
+
+    
 
     if(Number(cotas) <= 0 || Number(precoMedio) <= 0 || Number(rendaMensal) < 0) {
       setError("Cotas e preço médio devem ser maiores que zero. Renda mensal não pode ser negativa.");
@@ -95,7 +107,8 @@ function yieldCalculation(yieldAnual) {
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
     <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
       <Input
-      label="ticker"
+          ref={tickerInputRef}
+          label="ticker"
           placeholder="ex: HGLG11"
           value={ticker}
           onChange={(e) => setTicker(e.target.value)}

@@ -6,7 +6,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
 
   const commands = [
     {id: 1, name: "dashboard", description: "ir para o dashboard", action: () => navigate("/")},
-    {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => console.log("add fii")},
+    {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => navigate("/carteira?focus=true")},
     {id: 3, name: "carteira", description: "abrir carteira", action: () => navigate("/carteira")},
     {id: 4, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
   ]
