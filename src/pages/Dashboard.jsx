@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Card from "../components/Card";
 import { useFiis } from "../hooks/useFiis";
+import AllocationChart from "../components/AllocationChart";
 
 function Dashboard() {
   const { fiis } = useFiis();
@@ -39,6 +40,11 @@ function Dashboard() {
           <Card title="maior posição" value={higherPosition.ticker} />
         )}
       </div>
+        <div className="mt-6 bg-surface border border-border rounded-xl p-6">
+          <h2 className="text-xl font-semibold mb-4">alocação da carteira</h2>
+          <AllocationChart fiis={fiis} />
+        </div>
+
     </div>
   )
 }
