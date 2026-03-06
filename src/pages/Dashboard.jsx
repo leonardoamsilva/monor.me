@@ -28,8 +28,8 @@ function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card title="total investido" value={`R$ ${totalInvested.toFixed(2)}`} />
-        <Card title="renda mensal" value={`R$ ${monthlyIncome.toFixed(2)}`} />
-        <Card title="yield médio" value={`${yieldMonthly.toFixed(2)}%`} />
+        <Card title="renda mensal (estimativa)" value={`R$ ${monthlyIncome.toFixed(2)}`} />
+        <Card title="yield médio (mensal)" value={`${yieldMonthly.toFixed(2)}%`} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-6">

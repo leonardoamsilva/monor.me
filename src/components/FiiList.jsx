@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import { formatCurrency } from '../utils/format';
+import  useFiiSearch  from '../hooks/useFiiSearch';
 
 function FiiList({fiis, setFiis}) {
   
@@ -15,6 +16,22 @@ function FiiList({fiis, setFiis}) {
   const [dividendYield, setDividendYield] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const tickerInputRef = useRef(null);
+
+  const { results, loading, searchTickers, getFiiDetails, clearResults } = useFiiSearch();
+
+  async function handleSelectTicker(selectedTicker) {
+    setTicker(selectedTicker ?? '');
+    clearResults();
+    try {
+      const details = await getFiiDetails(selectedTicker);
+      if (details) {
+        setPrecoMedio(details.price ?? 0);
+        setDividendYield(details.dividendYield ?? 0);
+      }
+    } catch {
+      setError("Não foi possível carregar os dados do FII. Preencha manualmente.");
+    }
+  }
 
   useEffect(() => {
     if(searchParams.get("focus") === "true") {
@@ -106,13 +123,40 @@ function yieldCalculation(yieldAnual) {
       <h2 className='text-xl font-semibold mb-6'>minha carteira de FIIs</h2>
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
     <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
-      <Input
+      <div className="relative">
+        <Input
           ref={tickerInputRef}
           label="ticker"
           placeholder="ex: HGLG11"
           value={ticker}
-          onChange={(e) => setTicker(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setTicker(value);
+            if (value.trim().length >= 2) searchTickers(value.trim());
+          }}
         />
+        {(results.length > 0 || loading) && (
+          <ul className="absolute top-full left-0 right-0 mt-1 z-10 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+            {loading && results.length === 0 && (
+              <li className="px-4 py-2 text-muted text-sm">carregando...</li>
+            )}
+            {results.map((item) => {
+              const symbol = typeof item === 'object' ? (item.stock ?? item.symbol) : item;
+              return (
+                <li key={symbol}>
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-text hover:bg-surface-hover transition-colors"
+                    onClick={() => handleSelectTicker(symbol)}
+                  >
+                    {symbol}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
         <Input
         label="cotas"
           placeholder="0"
@@ -126,6 +170,7 @@ function yieldCalculation(yieldAnual) {
           type="number"
           value={precoMedio}
           onChange={(e) => setPrecoMedio(e.target.value)}
+          disabled={true}
         />
 
         <Input
@@ -159,7 +204,7 @@ function yieldCalculation(yieldAnual) {
               <td className='py-4'>{fii.cotas}</td>
               <td className='py-4'>{formatCurrency(fii.precoMedio)}</td>
               <td className='py-4'>{formatCurrency(fii.rendaMensal)}</td>
-              <td className='py-4'>{fii.dividendYield} %</td>
+              <td className='py-4'>{fii.dividendYield.toFixed(2)} %</td>
               <td className='py-4 flex gap-2'>
                 <Button onClick={() => handleEditFii(index)}>editar</Button>
                 <Button onClick={() => handleRemoveFii(index)} variant="danger">remover</Button>
