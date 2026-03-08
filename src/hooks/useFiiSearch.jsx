@@ -1,56 +1,80 @@
 import { useState } from 'react';
+import { FII_TICKERS } from '../data/fiiTickers';
 
-// Usa proxy no dev (Vite) para evitar CORS com o header x-brapi-key
-const BRAPI_BASE = import.meta.env.VITE_BRAPI_PROXY_URL ?? '';
+const API_BASE = (import.meta.env.VITE_FII_API_BASE_URL ?? '').replace(/\/$/, '');
+const DETAILS_PATH_TEMPLATE = import.meta.env.VITE_FII_API_DETAILS_PATH ?? '/api/fiis/:ticker';
+
+function buildDetailsUrl(ticker) {
+  const safeTicker = encodeURIComponent(String(ticker ?? '').trim());
+  const path = DETAILS_PATH_TEMPLATE.includes(':ticker')
+    ? DETAILS_PATH_TEMPLATE.replace(':ticker', safeTicker)
+    : `${DETAILS_PATH_TEMPLATE.replace(/\/$/, '')}/${safeTicker}`;
+  return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function toNumber(value, fallback = 0) {
+  if (typeof value === 'string') {
+    const normalized = value.replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeDetails(payload, ticker) {
+  const source = payload?.result ?? payload?.data ?? payload?.results?.[0] ?? payload;
+  const marketData = source?.marketData ?? source?.quote ?? source;
+
+  const price =
+    source?.valor_cota ??
+    marketData?.price ??
+    marketData?.regularMarketPrice ??
+    marketData?.currentPrice ??
+    source?.price;
+
+  let dividendYield =
+    source?.dividend_yield_12m ??
+    source?.dividendYield ??
+    source?.dividend_yield ??
+    source?.dy ??
+    source?.fundamental?.dividendYield;
+
+  dividendYield = toNumber(dividendYield);
+  if (dividendYield > 0 && dividendYield < 1) {
+    dividendYield *= 100;
+  }
+
+  return {
+    price: toNumber(price),
+    dividendYield,
+  };
+}
 
 function useFiiSearch() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  async function searchTickers(query) {
+  function searchTickers(query) {
     if (!query?.trim()) {
       setResults([]);
       return;
     }
-    setLoading(true);
-    setResults([]);
-    try {
-      const res = await fetch(
-        `${BRAPI_BASE}/api/brapi/available?search=${encodeURIComponent(query.trim())}`
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao buscar');
-      const stocks = data.stocks ?? data.symbols ?? [];
-      const fiis = Array.isArray(stocks)
-        ? stocks.filter((item) => (typeof item === 'object' ? item?.type === 'FII' : true))
-        : [];
-      setResults(fiis);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+
+    const term = query.trim().toUpperCase();
+    const filtered = FII_TICKERS.filter((symbol) => symbol.includes(term)).slice(0, 20);
+    setResults(filtered);
   }
 
   async function getFiiDetails(ticker) {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${BRAPI_BASE}/api/brapi/quote/${encodeURIComponent(ticker)}?range=1d&fundamental=true`
-      );
+      const res = await fetch(buildDetailsUrl(ticker));
       const data = await res.json();
-      console.log(res)
-      if (!res.ok || !data.results?.[0]) return null;
-      const r = data.results[0];
-      const price = r.regularMarketPrice ?? r.marketPrice ?? r.price ?? 0;
-      let dividendYield = r.fundamental?.dividendYield ?? r.dividendYield ?? 0;
-      console.log('[getFiiDetails] dividendYield:', dividendYield);
-      if (dividendYield > 0 && dividendYield < 1) dividendYield = dividendYield * 100;
-      return {
-        price: Number(price),
-        dividendYield: Number(dividendYield),
-        name: r.shortName ?? r.longName ?? ticker
-      };
+
+      if (!res.ok) return null;
+      return normalizeDetails(data, ticker);
     } catch {
       return null;
     } finally {

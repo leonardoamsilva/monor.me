@@ -5,21 +5,16 @@ import tailwindcss from "@tailwindcss/vite"
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  Object.assign(process.env, env)
+  const fiiApiProxyTarget = env.VITE_FII_API_PROXY_TARGET || 'http://127.0.0.1:8000'
+
   return {
     plugins: [react(), tailwindcss()],
     server: {
       proxy: {
-        '/api/brapi': {
-          target: 'https://brapi.dev',
+        '/api/fii': {
+          target: fiiApiProxyTarget,
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/brapi/, '/api'),
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              const key = process.env.VITE_BRAPI_KEY || ''
-              if (key) proxyReq.setHeader('Authorization', 'Bearer ' + key)
-            })
-          },
+          rewrite: (path) => path.replace(/^\/api\/fii/, '/fii'),
         },
       },
     },

@@ -31,5 +31,29 @@ cd monor.me
 # Instale as dependências
 npm install
 
+# Configure o ambiente local (opcional)
+# Windows (PowerShell):
+# copy .env.example .env
+
 # Rode o projeto
 npm run dev
+
+```
+
+## 🔌 API local (substituindo BRAPI)
+
+O autocomplete agora usa uma lista local de tickers da B3 (`src/data/fiiTickers.js`) e **não faz chamada de rede**.
+
+Para buscar os dados do FII selecionado, configure sua API local via `.env`:
+
+```bash
+VITE_FII_API_BASE_URL=
+VITE_FII_API_DETAILS_PATH=/api/fii/:ticker
+VITE_FII_API_PROXY_TARGET=http://127.0.0.1:8000
+```
+
+Notas:
+- `VITE_FII_API_BASE_URL`: deixe vazio no dev para usar o proxy do Vite (evita CORS).
+- `VITE_FII_API_DETAILS_PATH`: rota usada pelo front.
+- `VITE_FII_API_PROXY_TARGET`: host real da sua API local.
+- Exemplo final no browser (dev): `/api/fii/HGLG11` (proxy para `http://127.0.0.1:8000/fii/HGLG11`).

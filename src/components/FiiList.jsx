@@ -21,12 +21,15 @@ function FiiList({fiis, setFiis}) {
 
   async function handleSelectTicker(selectedTicker) {
     setTicker(selectedTicker ?? '');
+    setError("");
     clearResults();
     try {
       const details = await getFiiDetails(selectedTicker);
       if (details) {
         setPrecoMedio(details.price ?? 0);
         setDividendYield(details.dividendYield ?? 0);
+      } else {
+        setError("Não foi possível carregar os dados do FII. Verifique a API/CORS.");
       }
     } catch {
       setError("Não foi possível carregar os dados do FII. Preencha manualmente.");
@@ -133,6 +136,7 @@ function yieldCalculation(yieldAnual) {
             const value = e.target.value;
             setTicker(value);
             if (value.trim().length >= 2) searchTickers(value.trim());
+            else clearResults();
           }}
         />
         {(results.length > 0 || loading) && (
