@@ -15,12 +15,15 @@ function FiiList({fiis, setFiis}) {
   const [editIndex, setEditIndex] = useState(null);
   const [dividendYield, setDividendYield] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const tickerInputRef = useRef(null);
+  const optionRefs = useRef([]);
 
   const { results, loading, searchTickers, getFiiDetails, clearResults } = useFiiSearch();
 
   async function handleSelectTicker(selectedTicker) {
     setTicker(selectedTicker ?? '');
+    setHighlightedIndex(-1);
     setError("");
     clearResults();
     try {
@@ -29,10 +32,10 @@ function FiiList({fiis, setFiis}) {
         setPrecoMedio(details.price ?? 0);
         setDividendYield(details.dividendYield ?? 0);
       } else {
-        setError("Não foi possível carregar os dados do FII. Verifique a API/CORS.");
+        setError("Não foi possível carregar os dados do ativo. Verifique a API/CORS.");
       }
     } catch {
-      setError("Não foi possível carregar os dados do FII. Preencha manualmente.");
+      setError("Não foi possível carregar os dados do ativo. Preencha manualmente.");
     }
   }
 
@@ -47,6 +50,60 @@ function FiiList({fiis, setFiis}) {
     const yieldAnual = (dividendYield / 12 / 100) * precoMedio * cotas;
     setRendaMensal(yieldAnual.toFixed(2));
   }, [dividendYield, precoMedio, cotas]);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [results.length, ticker]);
+
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    optionRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex]);
+
+  function getResultSymbol(item) {
+    return typeof item === 'object' ? (item.stock ?? item.symbol) : item;
+  }
+
+  function handleTickerKeyDown(e) {
+    if (!results.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev + 1) % results.length);
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev <= 0 ? results.length - 1 : prev - 1));
+      return;
+    }
+
+    if (e.key === 'Enter' && highlightedIndex >= 0) {
+      e.preventDefault();
+      const selected = getResultSymbol(results[highlightedIndex]);
+      handleSelectTicker(selected);
+      return;
+    }
+
+    if (e.key === 'Home') {
+      e.preventDefault();
+      setHighlightedIndex(0);
+      return;
+    }
+
+    if (e.key === 'End') {
+      e.preventDefault();
+      setHighlightedIndex(results.length - 1);
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      clearResults();
+      setHighlightedIndex(-1);
+    }
+  }
 
   function handleAddFii(e) {
     e.preventDefault();
@@ -72,7 +129,7 @@ function FiiList({fiis, setFiis}) {
     });
 
     if(tickerExists) {
-      setError("FII já existe na carteira.");
+      setError("Ativo já existe na carteira.");
       return;
     }
 
@@ -81,7 +138,9 @@ function FiiList({fiis, setFiis}) {
       cotas: Number(cotas),
       precoMedio: Number(precoMedio),
       rendaMensal: Number(rendaMensal),
-      dividendYield: Number(dividendYield)
+      dividendYield: Number(dividendYield),
+      valorAtual: editIndex !== null ? Number(fiis[editIndex]?.valorAtual ?? precoMedio) : Number(precoMedio),
+      lastQuoteAt: editIndex !== null ? fiis[editIndex]?.lastQuoteAt ?? null : null,
     }
 
     if(editIndex !== null) {
@@ -123,7 +182,7 @@ function yieldCalculation(yieldAnual) {
 
   return (
     <div className='bg-surface border border-border rounded-xl p-6'>
-      <h2 className='text-xl font-semibold mb-6'>minha carteira de FIIs</h2>
+      <h2 className='text-xl font-semibold mb-6'>minha carteira de FIIs e FIAGROs</h2>
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
     <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
       <div className="relative">
@@ -132,11 +191,15 @@ function yieldCalculation(yieldAnual) {
           label="ticker"
           placeholder="ex: HGLG11"
           value={ticker}
+          onKeyDown={handleTickerKeyDown}
           onChange={(e) => {
             const value = e.target.value;
             setTicker(value);
             if (value.trim().length >= 2) searchTickers(value.trim());
-            else clearResults();
+            else {
+              clearResults();
+              setHighlightedIndex(-1);
+            }
           }}
         />
         {(results.length > 0 || loading) && (
@@ -144,13 +207,16 @@ function yieldCalculation(yieldAnual) {
             {loading && results.length === 0 && (
               <li className="px-4 py-2 text-muted text-sm">carregando...</li>
             )}
-            {results.map((item) => {
-              const symbol = typeof item === 'object' ? (item.stock ?? item.symbol) : item;
+            {results.map((item, index) => {
+              const symbol = getResultSymbol(item);
               return (
                 <li key={symbol}>
                   <button
+                    ref={(element) => {
+                      optionRefs.current[index] = element;
+                    }}
                     type="button"
-                    className="w-full px-4 py-2 text-left text-text hover:bg-surface-hover transition-colors"
+                    className={`w-full px-4 py-2 text-left text-text transition-colors ${highlightedIndex === index ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}
                     onClick={() => handleSelectTicker(symbol)}
                   >
                     {symbol}
@@ -186,16 +252,17 @@ function yieldCalculation(yieldAnual) {
         />
 
         <div className='md:col-span-4'>
-          <Button type="submit">{editIndex !== null ? "salvar" : "adicionar FII"}</Button>
+          <Button type="submit">{editIndex !== null ? "salvar" : "adicionar ativo"}</Button>
         </div>
     </form>
 
       <table className='w-full'>
         <thead>
           <tr className='border-b border-border text-left'>
-            <th className='pb-3 text-muted font-medium'>FII</th>
+            <th className='pb-3 text-muted font-medium'>ativo</th>
             <th className='pb-3 text-muted font-medium'>cotas</th>
             <th className='pb-3 text-muted font-medium'>preço médio</th>
+            <th className='pb-3 text-muted font-medium'>preço atual</th>
             <th className='pb-3 text-muted font-medium'>renda mensal</th>
             <th className='pb-3 text-muted font-medium'>dividend yield (12M)%</th>
             <th className='pb-3 text-muted font-medium'></th>
@@ -207,6 +274,7 @@ function yieldCalculation(yieldAnual) {
               <td className='py-4 font-semibold'>{fii.ticker}</td>
               <td className='py-4'>{fii.cotas}</td>
               <td className='py-4'>{formatCurrency(fii.precoMedio)}</td>
+              <td className='py-4'>{formatCurrency(fii.valorAtual ?? fii.precoMedio)}</td>
               <td className='py-4'>{formatCurrency(fii.rendaMensal)}</td>
               <td className='py-4'>{fii.dividendYield.toFixed(2)} %</td>
               <td className='py-4 flex gap-2'>

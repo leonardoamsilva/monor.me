@@ -4,18 +4,23 @@ import { useFiis } from "../hooks/useFiis";
 import AllocationChart from "../components/AllocationChart";
 
 function Dashboard() {
-  const { fiis } = useFiis();
+  const { fiis, refreshingQuotes } = useFiis();
 
   const totalInvested = fiis.reduce((total, fii) => total + fii.cotas * fii.precoMedio, 0);
+  const totalCurrentValue = fiis.reduce((total, fii) => {
+    const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
+    return total + fii.cotas * currentPrice;
+  }, 0);
   const monthlyIncome = fiis.reduce((total, fii) => total + Number(fii.rendaMensal), 0);
   const yieldMonthly = totalInvested > 0 ? (monthlyIncome / totalInvested) * 100 : 0;
 
-  const totalFiis = fiis.length;
+  const totalAtivos = fiis.length;
   const totalQuotas = fiis.reduce((total, fii) => total + fii.cotas, 0);
   const yearlyIncome = monthlyIncome * 12;
 
   const higherPosition = fiis.length > 0 ? fiis.reduce((bigger, fii) => {
-    const value = fii.cotas * fii.precoMedio;
+    const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
+    const value = fii.cotas * currentPrice;
     return value > bigger.value ? { ticker: fii.ticker, value } : bigger;
   }, { ticker: "", value: 0 }) : null;
 
@@ -24,16 +29,19 @@ function Dashboard() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold">dashboard</h1>
         <p className="text-muted">bem-vindo ao monor.me</p>
+        <p className="text-xs text-muted mt-2">
+          cotações: {refreshingQuotes ? "atualizando..." : "sincronização diária automática"}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card title="total investido" value={`R$ ${totalInvested.toFixed(2)}`} />
+        <Card title="valor da carteira" value={`R$ ${totalCurrentValue.toFixed(2)}`} />
         <Card title="renda mensal (estimativa)" value={`R$ ${monthlyIncome.toFixed(2)}`} />
         <Card title="yield médio (mensal)" value={`${yieldMonthly.toFixed(2)}%`} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-        <Card title="total de fiis" value={totalFiis} />
+        <Card title="total de ativos" value={totalAtivos} />
         <Card title="total de cotas na carteira" value={totalQuotas} />
         <Card title="renda anual (estimativa)" value={`R$ ${yearlyIncome.toFixed(2)}`} />
         {higherPosition && (

@@ -3,10 +3,14 @@ import { PieChart, Pie, ResponsiveContainer, Tooltip } from "recharts";
 const COLORS = ['#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
 function AllocationChart({ fiis }) {
-  const total = fiis.reduce((sum, fii) => sum + fii.cotas * fii.precoMedio, 0);
+  const total = fiis.reduce((sum, fii) => {
+    const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
+    return sum + fii.cotas * currentPrice;
+  }, 0);
 
   const data = fiis.map((fii, index) => {
-    const value = fii.cotas * fii.precoMedio;
+    const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
+    const value = fii.cotas * currentPrice;
     return {
       name: fii.ticker,
       value: value,
@@ -54,7 +58,7 @@ function AllocationChart({ fiis }) {
   if(fiis.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted">
-        adicione um FII para ver a alocação
+        adicione um ativo para ver a alocação
       </div>
     )
   }
