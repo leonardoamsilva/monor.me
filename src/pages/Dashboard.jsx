@@ -1,10 +1,23 @@
-import { useState } from "react";
 import Card from "../components/Card";
 import { useFiis } from "../hooks/useFiis";
 import AllocationChart from "../components/AllocationChart";
+import { useDividends } from "../hooks/useDividends";
+import { useCurrentMonth } from "../hooks/useCurrentMonth";
 
 function Dashboard() {
-  const { fiis, refreshingQuotes } = useFiis();
+  const { fiis, refreshingQuotes, refreshFiisQuotes } = useFiis();
+  const currentMonth = useCurrentMonth();
+  const {
+    monthlyPortfolioTotal,
+    yearlyPortfolioTotal,
+    yearlyPeriodLabel,
+    allTimePortfolioTotal,
+    allTimePeriodLabel,
+    loading: loadingDividends,
+  } = useDividends(
+    fiis,
+    currentMonth
+  );
 
   const totalInvested = fiis.reduce((total, fii) => total + fii.cotas * fii.precoMedio, 0);
   const totalCurrentValue = fiis.reduce((total, fii) => {
@@ -29,15 +42,43 @@ function Dashboard() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold">dashboard</h1>
         <p className="text-muted">bem-vindo ao monor.me</p>
-        <p className="text-xs text-muted mt-2">
-          cotações: {refreshingQuotes ? "atualizando..." : "sincronização diária automática"}
-        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <p className="text-xs text-muted">
+            cotações: {refreshingQuotes ? "atualizando..." : "sincronização diária automática"}
+          </p>
+          <button
+            type="button"
+            onClick={() => refreshFiisQuotes(true)}
+            disabled={refreshingQuotes}
+            className="px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            atualizar agora (teste)
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card title="valor da carteira" value={`R$ ${totalCurrentValue.toFixed(2)}`} />
         <Card title="renda mensal (estimativa)" value={`R$ ${monthlyIncome.toFixed(2)}`} />
         <Card title="yield médio (mensal)" value={`${yieldMonthly.toFixed(2)}%`} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card
+          title="proventos reais do mês"
+          value={loadingDividends ? "carregando..." : `R$ ${monthlyPortfolioTotal.toFixed(2)}`}
+          info="Estimativa baseada na posicao atual. O direito ao provento depende da data-com e da data de compra."
+        />
+        <Card
+          title="proventos reais no ano"
+          value={loadingDividends ? "carregando..." : `R$ ${yearlyPortfolioTotal.toFixed(2)}`}
+          info={`Acumulado no ano usando a posicao atual para os meses consultados.${yearlyPeriodLabel ? ` Periodo: ${yearlyPeriodLabel}.` : ''}`}
+        />
+        <Card
+          title="proventos reais (todos os anos)"
+          value={loadingDividends ? "carregando..." : `R$ ${allTimePortfolioTotal.toFixed(2)}`}
+          info={`Acumulado total desde a entrada do usuario.${allTimePeriodLabel ? ` Periodo: ${allTimePeriodLabel}.` : ''}`}
+        />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-6">

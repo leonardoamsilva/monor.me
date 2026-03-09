@@ -5,6 +5,13 @@ import Input from './ui/Input';
 import { formatCurrency } from '../utils/format';
 import  useFiiSearch  from '../hooks/useFiiSearch';
 
+function formatLastUpdateDate(value) {
+  if (!value) return 'pendente';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'pendente';
+  return parsed.toLocaleDateString('pt-BR');
+}
+
 function FiiList({fiis, setFiis}) {
   
   const [ticker, setTicker] = useState("");
@@ -50,10 +57,6 @@ function FiiList({fiis, setFiis}) {
     const yieldAnual = (dividendYield / 12 / 100) * precoMedio * cotas;
     setRendaMensal(yieldAnual.toFixed(2));
   }, [dividendYield, precoMedio, cotas]);
-
-  useEffect(() => {
-    setHighlightedIndex(-1);
-  }, [results.length, ticker]);
 
   useEffect(() => {
     if (highlightedIndex < 0) return;
@@ -140,6 +143,7 @@ function FiiList({fiis, setFiis}) {
       rendaMensal: Number(rendaMensal),
       dividendYield: Number(dividendYield),
       valorAtual: editIndex !== null ? Number(fiis[editIndex]?.valorAtual ?? precoMedio) : Number(precoMedio),
+      createdAt: editIndex !== null ? fiis[editIndex]?.createdAt ?? new Date().toISOString() : new Date().toISOString(),
       lastQuoteAt: editIndex !== null ? fiis[editIndex]?.lastQuoteAt ?? null : null,
     }
 
@@ -180,9 +184,17 @@ function yieldCalculation(yieldAnual) {
 
 }
 
+  const latestQuoteAt = fiis
+    .map((fii) => Date.parse(String(fii.lastQuoteAt ?? '')))
+    .filter((value) => Number.isFinite(value))
+    .reduce((latest, current) => (current > latest ? current : latest), 0);
+
   return (
     <div className='bg-surface border border-border rounded-xl p-6'>
-      <h2 className='text-xl font-semibold mb-6'>minha carteira de FIIs e FIAGROs</h2>
+      <div className='mb-6 flex items-end justify-between gap-4'>
+        <h2 className='text-xl font-semibold'>minha carteira de FIIs e FIAGROs</h2>
+        <p className='text-xs text-muted'>cotações atualizadas em: {formatLastUpdateDate(latestQuoteAt)}</p>
+      </div>
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
     <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
       <div className="relative">
@@ -195,6 +207,7 @@ function yieldCalculation(yieldAnual) {
           onChange={(e) => {
             const value = e.target.value;
             setTicker(value);
+            setHighlightedIndex(-1);
             if (value.trim().length >= 2) searchTickers(value.trim());
             else {
               clearResults();

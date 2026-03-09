@@ -1,17 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 function CommandPalette({ isOpen, onClose, navigate }) {
   const [search, setSearch] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const optionRefs = useRef([]);
 
   const commands = [
     {id: 1, name: "dashboard", description: "ir para o dashboard", action: () => navigate("/")},
     {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => navigate("/carteira?focus=true")},
     {id: 3, name: "carteira", description: "abrir carteira", action: () => navigate("/carteira")},
-    {id: 4, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
+    {id: 4, name: "proventos reais", description: "abrir proventos do mes", action: () => navigate("/proventos")},
+    {id: 5, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
   ]
 
   const filteredCommands = commands.filter(cmd => cmd.name.toLowerCase().includes(search.toLowerCase()));
+
+  useEffect(() => {
+    if (!isOpen || filteredCommands.length === 0) return;
+    optionRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, filteredCommands.length, isOpen]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -71,6 +78,9 @@ function CommandPalette({ isOpen, onClose, navigate }) {
           {filteredCommands.map((cmd, index) => (
             <button 
               key={cmd.id} 
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               onClick={() => { cmd.action(); onClose(); }} 
               onMouseEnter = {() => setSelectedIndex(index)}
               className={` w-full px-4 py-3 flex flex-col items-start transition-colors cursor-pointer ${index === selectedIndex ? 'bg-surface-hover' : ''}`}

@@ -5,6 +5,7 @@ import Settings from './pages/Settings'
 import Header from './components/layout/Header'
 import CommandPalette from './components/layout/CommandPalette'
 import Carteira from './pages/Carteira'
+import ProventosReais from './pages/ProventosReais'
 
 function AppContent() {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -28,6 +29,7 @@ function AppContent() {
       <Routes>
         <Route path='/' element={<Dashboard />} />
         <Route path='/carteira' element={<Carteira />} />
+        <Route path='/proventos' element={<ProventosReais />} />
         <Route path='/settings' element={<Settings />} />
       </Routes>
         <CommandPalette isOpen={commandOpen} onClose={() => setCommandOpen(false)} navigate={navigate} />

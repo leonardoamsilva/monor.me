@@ -1,15 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchFiiDetails } from "../services/fiiApi";
 
 const FIIS_STORAGE_KEY = "monor:fiis";
-const LAST_REFRESH_KEY = "monor:fiis:last-refresh";
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const LAST_REFRESH_DAY_KEY = "monor:fiis:last-refresh-day";
+const LAST_REFRESH_LEGACY_KEY = "monor:fiis:last-refresh";
 
-function isDailyRefreshDue(lastRefreshAt) {
-  if (!lastRefreshAt) return true;
-  const lastTimestamp = Number(lastRefreshAt);
-  if (!Number.isFinite(lastTimestamp)) return true;
-  return Date.now() - lastTimestamp >= ONE_DAY_MS;
+function getTodayKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isDailyRefreshDue(lastRefreshDay) {
+  return lastRefreshDay !== getTodayKey();
 }
 
 function calculateMonthlyIncome(cotas, currentPrice, dividendYield) {
@@ -25,11 +30,25 @@ export function useFiis() {
 
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
 
-  async function refreshFiisQuotes(force = false) {
+  const portfolioFingerprint = useMemo(
+    () =>
+      fiis
+        .map((fii) => `${String(fii.ticker ?? "").trim().toUpperCase()}|${Number(fii.cotas ?? 0)}|${Number(fii.precoMedio ?? 0)}|${String(fii.createdAt ?? "")}`)
+        .sort()
+        .join("||"),
+    [fiis]
+  );
+
+  const previousFingerprintRef = useRef(portfolioFingerprint);
+
+  const refreshFiisQuotes = useCallback(async (force = false) => {
     if (refreshingQuotes || fiis.length === 0) return;
 
-    const lastRefreshAt = localStorage.getItem(LAST_REFRESH_KEY);
-    if (!force && !isDailyRefreshDue(lastRefreshAt)) return;
+    const lastRefreshDay =
+      localStorage.getItem(LAST_REFRESH_DAY_KEY) ??
+      localStorage.getItem(LAST_REFRESH_LEGACY_KEY);
+
+    if (!force && !isDailyRefreshDue(lastRefreshDay)) return;
 
     setRefreshingQuotes(true);
     try {
@@ -52,19 +71,29 @@ export function useFiis() {
       );
 
       setFiis(updatedFiis);
-      localStorage.setItem(LAST_REFRESH_KEY, String(Date.now()));
+      localStorage.setItem(LAST_REFRESH_DAY_KEY, getTodayKey());
+      localStorage.removeItem(LAST_REFRESH_LEGACY_KEY);
     } finally {
       setRefreshingQuotes(false);
     }
-  }
+  }, [fiis, refreshingQuotes]);
 
   useEffect(() => {
     localStorage.setItem(FIIS_STORAGE_KEY, JSON.stringify(fiis));
   }, [fiis]);
 
   useEffect(() => {
+    // Daily automatic refresh only once per app entry/day.
     refreshFiisQuotes(false);
-  }, [fiis.length]);
+  }, [refreshFiisQuotes]);
+
+  useEffect(() => {
+    // Force refresh when user changes portfolio data (add/edit/remove).
+    if (previousFingerprintRef.current !== portfolioFingerprint) {
+      previousFingerprintRef.current = portfolioFingerprint;
+      refreshFiisQuotes(true);
+    }
+  }, [portfolioFingerprint, refreshFiisQuotes]);
 
   return {
     fiis,
