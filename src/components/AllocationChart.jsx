@@ -1,8 +1,20 @@
-import { PieChart, Pie, ResponsiveContainer, Tooltip } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const COLORS = ['#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
-function AllocationChart({ fiis }) {
+function CustomTooltip({ active, payload }) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-surface border border-border rounded-lg px-3 py-2 shadow-lg">
+        <p className="text-text font-medium">{payload[0].name}</p>
+        <p className="text-muted text-sm">R$ {payload[0].value.toFixed(2)}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+function AllocationChart({ fiis, chartType = 'donut', showLegend = true, showLabels = true }) {
   const total = fiis.reduce((sum, fii) => {
     const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
     return sum + fii.cotas * currentPrice;
@@ -17,18 +29,6 @@ function AllocationChart({ fiis }) {
       percentage: ((value / total) * 100).toFixed(1),
       fill: COLORS[index % COLORS.length]
   }});
-
-  const CustomTooltip = ({active, payload}) => {
-    if(active && payload && payload.length) {
-      return (
-        <div className="bg-surface border border-border rounded-lg px-3 py-2 shadow-lg">
-          <p className="text-text font-medium">{payload[0].name}</p>
-          <p className="text-muted text-sm">R$ {payload[0].value.toFixed(2)}</p>
-        </div>
-      )
-    }
-    return null;
-  };
 
   const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const RADIAN = Math.PI / 180;
@@ -66,23 +66,38 @@ function AllocationChart({ fiis }) {
   <div className="flex items-center gap-8">
     <div className="flex-1">
     <ResponsiveContainer width="100%" height={250}>
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          innerRadius={60}
-          outerRadius={100}
-          paddingAngle={2}
-          dataKey="value"
-          isAnimationActive={false}
-          label={renderLabel}
-          labelLine={false}
+      {chartType === 'bar' ? (
+        <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
+          <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+          <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+          <Tooltip content={<CustomTooltip />} animationDuration={0} wrapperStyle={{ outline: "none", zIndex: 100 }} />
+          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+            {data.map((entry) => (
+              <Cell key={entry.name} fill={entry.fill} />
+            ))}
+          </Bar>
+        </BarChart>
+      ) : (
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={chartType === 'pie' ? 0 : 60}
+            outerRadius={100}
+            paddingAngle={2}
+            dataKey="value"
+            isAnimationActive={false}
+            label={showLabels ? renderLabel : false}
+            labelLine={false}
           />
-          <Tooltip content={<CustomTooltip />} animationDuration={0} wrapperStyle={{outline: "none", zIndex:100}} />
-          </PieChart>
+          <Tooltip content={<CustomTooltip />} animationDuration={0} wrapperStyle={{ outline: "none", zIndex: 100 }} />
+        </PieChart>
+      )}
     </ResponsiveContainer>
   </div>
+{showLegend && (
 <div className="flex flex-col gap-2">
         {data.map((item) => (
           <div key={item.name} className="flex items-center gap-2">
@@ -91,10 +106,11 @@ function AllocationChart({ fiis }) {
               style={{ backgroundColor: item.fill }}
             />
             <span className="text-text text-sm">{item.name}</span>
-            <span className="text-muted text-sm">{item.percentage}%</span>
+            {showLabels && <span className="text-muted text-sm">{item.percentage}%</span>}
           </div>
         ))}
-      </div> 
+      </div>
+)}
     </div>
     
   )

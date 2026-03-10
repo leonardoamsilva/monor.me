@@ -3,9 +3,11 @@ import { useFiis } from "../hooks/useFiis";
 import AllocationChart from "../components/AllocationChart";
 import { useDividends } from "../hooks/useDividends";
 import { useCurrentMonth } from "../hooks/useCurrentMonth";
+import { useSettings } from "../hooks/useSettings";
 
 function Dashboard() {
   const { fiis, refreshingQuotes, refreshFiisQuotes } = useFiis();
+  const { settings } = useSettings();
   const currentMonth = useCurrentMonth();
   const {
     monthlyPortfolioTotal,
@@ -91,7 +93,12 @@ function Dashboard() {
       </div>
         <div className="mt-6 bg-surface border border-border rounded-xl p-6">
           <h2 className="text-xl font-semibold mb-4">alocação da carteira</h2>
-          <AllocationChart fiis={fiis} />
+          <AllocationChart
+            fiis={fiis}
+            chartType={settings.dashboardChartType}
+            showLegend={settings.dashboardChartShowLegend}
+            showLabels={settings.dashboardChartShowLabels}
+          />
         </div>
 
     </div>
