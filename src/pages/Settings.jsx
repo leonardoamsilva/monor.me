@@ -46,11 +46,11 @@ function Settings() {
       <div className="bg-surface border border-border rounded-xl p-6 space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-text">dashboard</h2>
-          <p className="text-sm text-muted">defina como o grafico de alocacao deve ser exibido</p>
+          <p className="text-sm text-muted">defina como o gráfico de alocação deve ser exibido</p>
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm text-muted">tipo de grafico</p>
+          <p className="text-sm text-muted">tipo de gráfico</p>
           <div className="inline-flex w-full md:w-auto rounded-lg border border-border bg-bg p-1">
             {CHART_OPTIONS.map((option) => {
               const isActive = settings.dashboardChartType === option.value;
@@ -86,7 +86,7 @@ function Settings() {
         <div className="pt-2 border-t border-border/60 space-y-3">
           <div>
             <h2 className="text-lg font-semibold text-text">meta de renda mensal</h2>
-            <p className="text-sm text-muted">defina quanto deseja receber por mes em proventos</p>
+            <p className="text-sm text-muted">defina quanto deseja receber por mês em proventos</p>
           </div>
 
           <div className="max-w-sm">

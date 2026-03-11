@@ -10,7 +10,8 @@ function CommandPalette({ isOpen, onClose, navigate }) {
     {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => navigate("/carteira?focus=true")},
     {id: 3, name: "carteira", description: "abrir carteira", action: () => navigate("/carteira")},
     {id: 4, name: "proventos reais", description: "abrir proventos do mes", action: () => navigate("/proventos")},
-    {id: 5, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
+    {id: 5, name: "simulador de aportes", description: "juros compostos", action: () => navigate("/simulador-aportes")},
+    {id: 6, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
   ]
 
   const filteredCommands = commands.filter(cmd => cmd.name.toLowerCase().includes(search.toLowerCase()));
