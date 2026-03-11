@@ -12,6 +12,12 @@ const SIMULATOR_OPTIONS = [
     status: "ready",
   },
   {
+    id: "simple-interest",
+    name: "juros simples",
+    description: "simulação sem juros sobre juros",
+    status: "ready",
+  },
+  {
     id: "target-income",
     name: "meta por ativo",
     description: "quanto precisa investir para atingir renda alvo",
@@ -73,6 +79,43 @@ function calculateCompoundInterest({ initialAmount, monthlyContribution, monthly
     finalAmount,
     investedAmount,
     interestAmount: finalAmount - investedAmount,
+    monthlySnapshots,
+  };
+}
+
+function calculateSimpleInterest({ initialAmount, monthlyRate, months }) {
+  const monthlyRateDecimal = monthlyRate / 100;
+
+  if (months <= 0) {
+    return {
+      finalAmount: initialAmount,
+      investedAmount: initialAmount,
+      interestAmount: 0,
+      monthlySnapshots: [],
+    };
+  }
+
+  const investedBase = initialAmount;
+  let accumulatedInterest = 0;
+  const monthlySnapshots = [];
+
+  for (let month = 1; month <= months; month += 1) {
+    const monthlyInterest = investedBase * monthlyRateDecimal;
+    accumulatedInterest += monthlyInterest;
+
+    monthlySnapshots.push({
+      month,
+      invested: investedBase,
+      amount: investedBase + accumulatedInterest,
+    });
+  }
+
+  const finalAmount = investedBase + accumulatedInterest;
+
+  return {
+    finalAmount,
+    investedAmount: investedBase,
+    interestAmount: accumulatedInterest,
     monthlySnapshots,
   };
 }
@@ -347,6 +390,207 @@ function CompoundInterestSimulator() {
   );
 }
 
+function SimpleInterestSimulator() {
+  const [initialAmount, setInitialAmount] = useState(0);
+  const [annualRateInput, setAnnualRateInput] = useState("");
+  const [yearsInput, setYearsInput] = useState("");
+
+  const parsedAnnualRate = Number(annualRateInput || 0);
+  const parsedYears = Number(yearsInput || 0);
+  const annualRate = Number.isFinite(parsedAnnualRate) ? Math.max(0, parsedAnnualRate) : 0;
+  const years = Number.isFinite(parsedYears) ? Math.max(0, parsedYears) : 0;
+  const monthlyRateEquivalent = annualRate / 12;
+  const totalMonths = Math.max(0, Math.round(years * 12));
+
+  const result = useMemo(
+    () =>
+      calculateSimpleInterest({
+        initialAmount: Number(initialAmount) || 0,
+        monthlyRate: monthlyRateEquivalent,
+        months: totalMonths,
+      }),
+    [initialAmount, monthlyRateEquivalent, totalMonths]
+  );
+
+  const yearlySnapshots = result.monthlySnapshots.filter((row) => row.month % 12 === 0);
+  const annualTableRows = useMemo(() => {
+    if (result.monthlySnapshots.length === 0) return [];
+
+    const rows = [...yearlySnapshots];
+    const lastSnapshot = result.monthlySnapshots[result.monthlySnapshots.length - 1];
+
+    if (!rows.some((row) => row.month === lastSnapshot.month)) {
+      rows.push(lastSnapshot);
+    }
+
+    return rows;
+  }, [result.monthlySnapshots, yearlySnapshots]);
+  const totalReturnPercent = result.investedAmount > 0
+    ? (result.interestAmount / result.investedAmount) * 100
+    : 0;
+
+  return (
+    <>
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">parâmetros</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MoneyInput
+            id="simple-initial-amount"
+            label="valor inicial"
+            value={initialAmount}
+            onValueChange={setInitialAmount}
+          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="simple-years" className="text-sm text-muted">prazo (anos)</label>
+            <input
+              id="simple-years"
+              type="number"
+              min="0"
+              step="0.5"
+              value={yearsInput}
+              onChange={(event) => setYearsInput(event.target.value)}
+              className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              placeholder="0"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="simple-annual-rate" className="text-sm text-muted">taxa de juros anual (%)</label>
+            <input
+              id="simple-annual-rate"
+              type="number"
+              min="0"
+              step="0.01"
+              value={annualRateInput}
+              onChange={(event) => setAnnualRateInput(event.target.value)}
+              className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              placeholder="0"
+            />
+            <p className="text-xs text-muted">
+              equivalente mensal (simples): {monthlyRateEquivalent.toFixed(4)}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card title="montante final" value={formatCurrency(result.finalAmount)} />
+        <Card title="total investido" value={formatCurrency(result.investedAmount)} />
+        <Card title="juros acumulados" value={formatCurrency(result.interestAmount)} />
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold">resumo</h2>
+        <p className="text-sm text-muted mt-2">
+          em {totalMonths} meses, o valor projetado e {formatCurrency(result.finalAmount)}.
+        </p>
+        <p className="text-sm text-muted">
+          retorno sobre o capital investido: {Number.isFinite(totalReturnPercent) ? `${totalReturnPercent.toFixed(2)}%` : "0,00%"}.
+        </p>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">evolução mensal (gráfico)</h2>
+        <div className="flex items-center gap-4 mb-3 text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-accent" /> montante projetado
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-warning" /> total investido
+          </span>
+        </div>
+        {result.monthlySnapshots.length === 0 ? (
+          <p className="text-sm text-muted">defina um prazo maior que zero para visualizar o gráfico.</p>
+        ) : (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={result.monthlySnapshots} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                  tickFormatter={(value) => `m${value}`}
+                />
+                <YAxis
+                  tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip content={<EvolutionTooltip />} animationDuration={0} wrapperStyle={{ outline: "none" }} />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="#3B82F6"
+                  strokeWidth={2.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="invested"
+                  stroke="#F59E0B"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-xl font-semibold mb-4">evolução anual</h2>
+        {annualTableRows.length === 0 ? (
+          <p className="text-sm text-muted">defina um prazo maior que zero para ver a evolução.</p>
+        ) : (
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-bg/60">
+                <tr className="border-b border-border text-left">
+                  <th className="py-3 px-3 text-muted font-medium">período</th>
+                  <th className="py-3 px-3 text-muted font-medium">mês</th>
+                  <th className="py-3 px-3 text-muted font-medium">investido</th>
+                  <th className="py-3 px-3 text-muted font-medium">montante</th>
+                  <th className="py-3 px-3 text-muted font-medium">juros</th>
+                  <th className="py-3 px-3 text-muted font-medium">retorno</th>
+                </tr>
+              </thead>
+              <tbody>
+                {annualTableRows.map((row) => {
+                  const yearNumber = Math.ceil(row.month / 12);
+                  const isPartialPeriod = row.month % 12 !== 0;
+                  const interest = row.amount - row.invested;
+                  const rowReturnPercent = row.invested > 0 ? (interest / row.invested) * 100 : 0;
+
+                  return (
+                    <tr key={row.month} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                      <td className="py-3 px-3">
+                        <span className="text-text">ano {yearNumber}</span>
+                        {isPartialPeriod && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide text-warning">parcial</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-muted">{row.month}</td>
+                      <td className="py-3 px-3">{formatCurrency(row.invested)}</td>
+                      <td className="py-3 px-3">{formatCurrency(row.amount)}</td>
+                      <td className="py-3 px-3 text-accent">{formatCurrency(interest)}</td>
+                      <td className="py-3 px-3 text-muted">{rowReturnPercent.toFixed(2)}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+              {totalMonths % 12 !== 0
+                ? "o último registro representa um período parcial do ano final."
+                : "registros fechados ao final de cada ano."}
+            </p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SimuladorAportes() {
   const [selectedOption, setSelectedOption] = useState("compound-interest");
 
@@ -360,6 +604,7 @@ function SimuladorAportes() {
       <SimulatorTypeSelector selectedOption={selectedOption} onSelectOption={setSelectedOption} />
 
       {selectedOption === "compound-interest" && <CompoundInterestSimulator />}
+      {selectedOption === "simple-interest" && <SimpleInterestSimulator />}
     </div>
   );
 }
