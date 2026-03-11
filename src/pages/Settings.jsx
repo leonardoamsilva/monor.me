@@ -1,4 +1,5 @@
 import { useSettings } from "../hooks/useSettings";
+import MoneyInput from "../components/ui/MoneyInput";
 
 const CHART_OPTIONS = [
   { value: 'donut', label: 'rosca' },
@@ -30,6 +31,10 @@ function Toggle({ checked, onChange, label, description }) {
 
 function Settings() {
   const { settings, updateSetting, resetSettings } = useSettings();
+
+  function handleIncomeGoalChange(value) {
+    updateSetting('incomeGoalMonthly', value);
+  }
 
   return (
     <div className="min-h-screen p-8">
@@ -76,6 +81,22 @@ function Settings() {
             label="mostrar porcentagens"
             description="mostra os percentuais no grafico e na legenda"
           />
+        </div>
+
+        <div className="pt-2 border-t border-border/60 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-text">meta de renda mensal</h2>
+            <p className="text-sm text-muted">defina quanto deseja receber por mes em proventos</p>
+          </div>
+
+          <div className="max-w-sm">
+            <MoneyInput
+              id="income-goal"
+              label="valor alvo mensal (R$)"
+              value={Number(settings.incomeGoalMonthly ?? 0)}
+              onValueChange={handleIncomeGoalChange}
+            />
+          </div>
         </div>
 
         <div className="pt-2 border-t border-border/60 flex justify-end">

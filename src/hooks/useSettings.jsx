@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS = {
   dashboardChartType: 'donut',
   dashboardChartShowLegend: true,
   dashboardChartShowLabels: true,
+  incomeGoalMonthly: 0,
 };
 
 function safeParseSettings(raw) {
