@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import Card from "../components/Card";
 import MoneyInput from "../components/ui/MoneyInput";
 import { formatCurrency } from "../utils/format";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const SIMULATOR_OPTIONS = [
   {
@@ -45,6 +46,7 @@ function calculateCompoundInterest({ initialAmount, monthlyContribution, monthly
       monthlySnapshots: Array.from({ length: months }, (_, index) => ({
         month: index + 1,
         amount: initialAmount + monthlyContribution * (index + 1),
+        invested: initialAmount + monthlyContribution * (index + 1),
       })),
     };
   }
@@ -60,7 +62,11 @@ function calculateCompoundInterest({ initialAmount, monthlyContribution, monthly
 
   for (let month = 1; month <= months; month += 1) {
     runningAmount = runningAmount * (1 + monthlyRateDecimal) + monthlyContribution;
-    monthlySnapshots.push({ month, amount: runningAmount });
+    monthlySnapshots.push({
+      month,
+      amount: runningAmount,
+      invested: initialAmount + monthlyContribution * month,
+    });
   }
 
   return {
@@ -112,6 +118,24 @@ function SimulatorTypeSelector({ selectedOption, onSelectOption }) {
   );
 }
 
+function EvolutionTooltip({ active, payload }) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const item = payload[0].payload;
+
+  return (
+    <div className="bg-surface border border-border rounded-lg px-3 py-2 shadow-lg">
+      <p className="text-text text-sm font-medium">mes {item.month}</p>
+      <p className="text-sm" style={{ color: "#3B82F6" }}>
+        montante: {formatCurrency(item.amount)}
+      </p>
+      <p className="text-sm" style={{ color: "#F59E0B" }}>
+        investido: {formatCurrency(item.invested)}
+      </p>
+    </div>
+  );
+}
+
 function CompoundInterestSimulator() {
   const [initialAmount, setInitialAmount] = useState(0);
   const [monthlyContribution, setMonthlyContribution] = useState(0);
@@ -139,6 +163,18 @@ function CompoundInterestSimulator() {
   );
 
   const yearlySnapshots = result.monthlySnapshots.filter((row) => row.month % 12 === 0);
+  const annualTableRows = useMemo(() => {
+    if (result.monthlySnapshots.length === 0) return [];
+
+    const rows = [...yearlySnapshots];
+    const lastSnapshot = result.monthlySnapshots[result.monthlySnapshots.length - 1];
+
+    if (!rows.some((row) => row.month === lastSnapshot.month)) {
+      rows.push(lastSnapshot);
+    }
+
+    return rows;
+  }, [result.monthlySnapshots, yearlySnapshots]);
   const totalReturnPercent = result.investedAmount > 0
     ? (result.interestAmount / result.investedAmount) * 100
     : 0;
@@ -208,30 +244,102 @@ function CompoundInterestSimulator() {
         </p>
       </div>
 
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">evolução mensal (gráfico)</h2>
+        <div className="flex items-center gap-4 mb-3 text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-accent" /> montante projetado
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-warning" /> total investido
+          </span>
+        </div>
+        {result.monthlySnapshots.length === 0 ? (
+          <p className="text-sm text-muted">defina um prazo maior que zero para visualizar o gráfico.</p>
+        ) : (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={result.monthlySnapshots} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                  tickFormatter={(value) => `m${value}`}
+                />
+                <YAxis
+                  tick={{ fill: "#9CA3AF", fontSize: 11 }}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip content={<EvolutionTooltip />} animationDuration={0} wrapperStyle={{ outline: "none" }} />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="#3B82F6"
+                  strokeWidth={2.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="invested"
+                  stroke="#F59E0B"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
       <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-xl font-semibold mb-4">evolução anual</h2>
-        {yearlySnapshots.length === 0 ? (
+        {annualTableRows.length === 0 ? (
           <p className="text-sm text-muted">defina um prazo maior que zero para ver a evolução.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto border border-border rounded-lg">
             <table className="w-full">
-              <thead>
+              <thead className="bg-bg/60">
                 <tr className="border-b border-border text-left">
-                  <th className="pb-3 text-muted font-medium">ano</th>
-                  <th className="pb-3 text-muted font-medium">mês</th>
-                  <th className="pb-3 text-muted font-medium">montante</th>
+                  <th className="py-3 px-3 text-muted font-medium">período</th>
+                  <th className="py-3 px-3 text-muted font-medium">mês</th>
+                  <th className="py-3 px-3 text-muted font-medium">investido</th>
+                  <th className="py-3 px-3 text-muted font-medium">montante</th>
+                  <th className="py-3 px-3 text-muted font-medium">juros</th>
+                  <th className="py-3 px-3 text-muted font-medium">retorno</th>
                 </tr>
               </thead>
               <tbody>
-                {yearlySnapshots.map((row) => (
-                  <tr key={row.month} className="border-b border-border/50">
-                    <td className="py-3">{Math.ceil(row.month / 12)}</td>
-                    <td className="py-3">{row.month}</td>
-                    <td className="py-3">{formatCurrency(row.amount)}</td>
-                  </tr>
-                ))}
+                {annualTableRows.map((row) => {
+                  const yearNumber = Math.ceil(row.month / 12);
+                  const isPartialPeriod = row.month % 12 !== 0;
+                  const interest = row.amount - row.invested;
+                  const rowReturnPercent = row.invested > 0 ? (interest / row.invested) * 100 : 0;
+
+                  return (
+                    <tr key={row.month} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                      <td className="py-3 px-3">
+                        <span className="text-text">ano {yearNumber}</span>
+                        {isPartialPeriod && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide text-warning">parcial</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-muted">{row.month}</td>
+                      <td className="py-3 px-3">{formatCurrency(row.invested)}</td>
+                      <td className="py-3 px-3">{formatCurrency(row.amount)}</td>
+                      <td className="py-3 px-3 text-accent">{formatCurrency(interest)}</td>
+                      <td className="py-3 px-3 text-muted">{rowReturnPercent.toFixed(2)}%</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+              {totalMonths % 12 !== 0
+                ? "o último registro representa um período parcial do ano final."
+                : "registros fechados ao final de cada ano."}
+            </p>
           </div>
         )}
       </div>
