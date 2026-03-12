@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Button from './ui/Button';
 import Input from './ui/Input';
@@ -17,7 +17,6 @@ function FiiList({fiis, setFiis}) {
   const [ticker, setTicker] = useState("");
   const [cotas, setCotas] = useState(0);
   const [precoMedio, setPrecoMedio] = useState(0);
-  const [rendaMensal, setRendaMensal] = useState(0);
   const [error, setError] = useState("");
   const [editIndex, setEditIndex] = useState(null);
   const [dividendYield, setDividendYield] = useState(0);
@@ -53,9 +52,11 @@ function FiiList({fiis, setFiis}) {
     }
   }, [searchParams, setSearchParams]);
 
-  useEffect(() => {
-    const yieldAnual = (dividendYield / 12 / 100) * precoMedio * cotas;
-    setRendaMensal(yieldAnual.toFixed(2));
+  const rendaMensal = useMemo(() => {
+    const numericDy = Number(dividendYield) || 0;
+    const numericPrecoMedio = Number(precoMedio) || 0;
+    const numericCotas = Number(cotas) || 0;
+    return Number(((numericDy / 12 / 100) * numericPrecoMedio * numericCotas).toFixed(2));
   }, [dividendYield, precoMedio, cotas]);
 
   useEffect(() => {
@@ -160,7 +161,6 @@ function FiiList({fiis, setFiis}) {
     setTicker("");
     setCotas(0);
     setPrecoMedio(0);
-    setRendaMensal(0);
     setDividendYield(0);
 }
 

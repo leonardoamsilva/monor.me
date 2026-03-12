@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Card from '../components/Card';
 import { useFiis } from '../hooks/useFiis';
 import { useDividends } from '../hooks/useDividends';
@@ -17,6 +17,7 @@ function ProventosReais() {
   const currentMonth = useCurrentMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [autoCurrentMonth, setAutoCurrentMonth] = useState(true);
+  const activeMonth = autoCurrentMonth ? currentMonth : selectedMonth;
   const {
     rows,
     monthlyPortfolioTotal,
@@ -26,13 +27,7 @@ function ProventosReais() {
     allTimePeriodLabel,
     loading,
     error,
-  } = useDividends(fiis, selectedMonth);
-
-  useEffect(() => {
-    if (autoCurrentMonth && selectedMonth !== currentMonth) {
-      setSelectedMonth(currentMonth);
-    }
-  }, [autoCurrentMonth, currentMonth, selectedMonth]);
+  } = useDividends(fiis, activeMonth);
 
   const portfolioRows = useMemo(
     () => rows.filter((row) => row.inPortfolio).sort((a, b) => b.portfolioAmount - a.portfolioAmount),
@@ -96,7 +91,7 @@ function ProventosReais() {
         <input
           id="month-filter"
           type="month"
-          value={selectedMonth}
+          value={activeMonth}
           onChange={(e) => {
             setSelectedMonth(e.target.value);
             setAutoCurrentMonth(false);
@@ -107,7 +102,6 @@ function ProventosReais() {
           type="button"
           onClick={() => {
             setAutoCurrentMonth(true);
-            setSelectedMonth(currentMonth);
           }}
           className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:bg-surface-hover hover:text-text transition-colors"
         >

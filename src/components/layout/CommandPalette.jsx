@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 function CommandPalette({ isOpen, onClose, navigate }) {
   const [search, setSearch] = useState("");
@@ -16,6 +16,12 @@ function CommandPalette({ isOpen, onClose, navigate }) {
 
   const filteredCommands = commands.filter(cmd => cmd.name.toLowerCase().includes(search.toLowerCase()));
 
+  const handleClose = useCallback(() => {
+    setSearch("");
+    setSelectedIndex(0);
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen || filteredCommands.length === 0) return;
     optionRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" });
@@ -24,7 +30,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
   useEffect(() => {
     function handleKeyDown(e) {
       if(e.key === "Escape") {
-        onClose();
+        handleClose();
       }
 
       if(e.key === "ArrowDown"){
@@ -40,7 +46,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
       if(e.key === "Enter" && filteredCommands.length > 0) {
         e.preventDefault();
         filteredCommands[selectedIndex].action();
-        onClose();
+        handleClose();
       }
     }
 
@@ -49,14 +55,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
     }
 
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, filteredCommands, selectedIndex]);
-
-  useEffect(() => {
-    if(!isOpen){ 
-      setSearch(""); 
-      setSelectedIndex(0)
-    };
-  }, [isOpen]);
+  }, [isOpen, filteredCommands, selectedIndex, handleClose]);
 
   if(!isOpen) return null;
 
@@ -64,7 +63,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm" 
-        onClick={onClose}
+        onClick={handleClose}
       />
       <div className="relative w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
         <input 
@@ -82,7 +81,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
               ref={(element) => {
                 optionRefs.current[index] = element;
               }}
-              onClick={() => { cmd.action(); onClose(); }} 
+              onClick={() => { cmd.action(); handleClose(); }} 
               onMouseEnter = {() => setSelectedIndex(index)}
               className={` w-full px-4 py-3 flex flex-col items-start transition-colors cursor-pointer ${index === selectedIndex ? 'bg-surface-hover' : ''}`}
             >
