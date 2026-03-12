@@ -665,6 +665,12 @@ function LossCompensationSimulator() {
 
   return (
     <>
+          <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-lg font-semibold mb-2">como o imposto em FIIs funciona</h2>
+        <p className="text-sm text-muted">neste contexto, o IR incide sobre o ganho liquido na venda, apos compensar prejuizos acumulados.</p>
+        <p className="text-sm text-muted">a aliquota usada como referencia para FIIs e 20%.</p>
+        <p className="text-xs text-muted mt-2">resumo educacional: para regras completas, considere a legislacao vigente e orientacao contábil/fiscal.</p>
+      </div>
       <div className="bg-surface border border-border rounded-xl p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">parâmetros</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
