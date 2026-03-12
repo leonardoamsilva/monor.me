@@ -665,11 +665,41 @@ function LossCompensationSimulator() {
 
   return (
     <>
-          <div className="bg-surface border border-border rounded-xl p-6 mb-8">
-        <h2 className="text-lg font-semibold mb-2">como o imposto em FIIs funciona</h2>
-        <p className="text-sm text-muted">neste contexto, o IR incide sobre o ganho liquido na venda, apos compensar prejuizos acumulados.</p>
-        <p className="text-sm text-muted">a aliquota usada como referencia para FIIs e 20%.</p>
-        <p className="text-xs text-muted mt-2">resumo educacional: para regras completas, considere a legislacao vigente e orientacao contábil/fiscal.</p>
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-semibold">como o imposto em FIIs funciona</h2>
+          <span className="text-xs font-medium text-warning border border-warning/30 bg-warning/10 rounded-full px-2.5 py-1">
+            regra geral: 20% sobre ganho de capital
+          </span>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-border bg-bg/40 p-3 text-sm text-muted">
+          <p>base legal resumida (pessoa física, operações comuns em bolsa): ganho na venda de cotas de FII e, em regra, tributado a 20%.</p>
+          <p className="mt-1">diferente de ações, não há isenção mensal de R$ 20.000 para venda de FIIs.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="rounded-lg border border-border bg-bg/50 p-3">
+            <p className="text-xs text-accent font-semibold mb-1">passo 1</p>
+            <p className="text-sm text-text">apurar lucro/prejuízo da venda</p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg/50 p-3">
+            <p className="text-xs text-accent font-semibold mb-1">passo 2</p>
+            <p className="text-sm text-text">compensar prejuízo acumulado da mesma natureza</p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg/50 p-3">
+            <p className="text-xs text-accent font-semibold mb-1">passo 3</p>
+            <p className="text-sm text-text">encontrar base tributável</p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg/50 p-3">
+            <p className="text-xs text-accent font-semibold mb-1">passo 4</p>
+            <p className="text-sm text-text">aplicar alíquota e calcular IR</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted mt-4">
+          simulação educacional: regras podem variar por tipo de operação (comum/day trade), mudanças legais e compensação entre mercados. valide com contador e legislação vigente.
+        </p>
       </div>
       <div className="bg-surface border border-border rounded-xl p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">parâmetros</h2>
@@ -713,19 +743,19 @@ function LossCompensationSimulator() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card
-          title="resultado da operação"
+          title="lucro/prejuízo da venda"
           value={formatCurrency(monthlyResult)}
-          info="diferença entre valor de venda e valor de compra da operação."
+          info="resultado da venda: valor de venda menos valor de compra da operação."
         />
         <Card
           title="base tributável"
           value={formatCurrency(simulation.taxableBase)}
-          info="parte do lucro que sobra apos compensar o prejuízo acumulado."
+          info="lucro que sobra apos compensar prejuízo acumulado da mesma natureza, sobre o qual se aplica a alíquota."
         />
         <Card
           title="imposto devido"
           value={formatCurrency(simulation.taxDue)}
-          info="valor de IR calculado sobre a base tributável com a alíquota informada."
+          info="valor de IR calculado sobre a base tributável. para FIIs, a referencia usual em operações comuns e 20%."
         />
         <Card
           title="prejuízo remanescente"
@@ -767,7 +797,7 @@ function LossCompensationSimulator() {
                 <td className="py-3 px-3">{formatCurrency(saleAmount)}</td>
               </tr>
               <tr className="border-b border-border/50">
-                <td className="py-3 px-3">resultado do mês</td>
+                <td className="py-3 px-3">lucro/prejuízo da venda</td>
                 <td className="py-3 px-3">{formatCurrency(monthlyResult)}</td>
               </tr>
               <tr className="border-b border-border/50">
