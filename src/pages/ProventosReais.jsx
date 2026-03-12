@@ -119,17 +119,17 @@ function ProventosReais() {
         <Card
           title="proventos reais do mes (carteira)"
           value={loading ? 'carregando...' : formatCurrency(monthlyPortfolioTotal)}
-          info="Estimativa baseada na posicao atual. O direito ao provento depende da data-com e data da compra."
+          info="estimativa baseada na posição atual. O direito ao provento depende da data-com e data da compra."
         />
         <Card
           title="proventos reais no ano (carteira)"
           value={loading ? 'carregando...' : formatCurrency(yearlyPortfolioTotal)}
-          info={`Acumulado no ano com base na posicao atual para cada mes consultado.${yearlyPeriodLabel ? ` Periodo: ${yearlyPeriodLabel}.` : ''}`}
+          info={`Acumulado no ano com base na posição atual para cada mes consultado.${yearlyPeriodLabel ? ` Periodo: ${yearlyPeriodLabel}.` : ''}`}
         />
         <Card
           title="proventos reais total (carteira)"
           value={loading ? 'carregando...' : formatCurrency(allTimePortfolioTotal)}
-          info={`Acumulado de todos os anos desde a entrada do usuario.${allTimePeriodLabel ? ` Periodo: ${allTimePeriodLabel}.` : ''}`}
+          info={`Acumulado de todos os anos desde a entrada do usuário.${allTimePeriodLabel ? ` Período: ${allTimePeriodLabel}.` : ''}`}
         />
       </div>
 
@@ -140,7 +140,7 @@ function ProventosReais() {
       <section className="bg-surface border border-border rounded-xl p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">destaques da carteira</h2>
         {portfolioRows.length === 0 ? (
-          <p className="text-muted">nenhum ativo da carteira com provento para este mes</p>
+          <p className="text-muted">nenhum ativo da carteira com provento para este mês</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {portfolioRows.map((row) => (
@@ -163,7 +163,7 @@ function ProventosReais() {
       </section>
 
       <section className="bg-surface border border-border rounded-xl p-6">
-        <h2 className="text-xl font-semibold mb-4">todos os proventos do mes</h2>
+        <h2 className="text-xl font-semibold mb-4">todos os proventos do mês</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -205,7 +205,7 @@ function ProventosReais() {
             </tbody>
           </table>
           {allRows.length === 0 && !loading && (
-            <p className="text-muted py-4">nenhum provento encontrado para este mes</p>
+            <p className="text-muted py-4">nenhum provento encontrado para este mês</p>
           )}
         </div>
       </section>

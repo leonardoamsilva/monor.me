@@ -278,9 +278,21 @@ function CompoundInterestSimulator() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card title="montante final" value={formatCurrency(result.finalAmount)} />
-        <Card title="total investido" value={formatCurrency(result.investedAmount)} />
-        <Card title="juros acumulados" value={formatCurrency(result.interestAmount)} />
+        <Card
+          title="montante final"
+          value={formatCurrency(result.finalAmount)}
+          info="valor projetado no fim do prazo: capital investido + rendimento acumulado."
+        />
+        <Card
+          title="total investido"
+          value={formatCurrency(result.investedAmount)}
+          info="soma do valor inicial com todos os aportes feitos no periodo."
+        />
+        <Card
+          title="juros acumulados"
+          value={formatCurrency(result.interestAmount)}
+          info="ganho total vindo dos juros ao longo do prazo."
+        />
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-6 mb-8">
@@ -479,9 +491,21 @@ function SimpleInterestSimulator() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card title="montante final" value={formatCurrency(result.finalAmount)} />
-        <Card title="total investido" value={formatCurrency(result.investedAmount)} />
-        <Card title="juros acumulados" value={formatCurrency(result.interestAmount)} />
+        <Card
+          title="montante final"
+          value={formatCurrency(result.finalAmount)}
+          info="valor final com juros simples, sem juros sobre juros."
+        />
+        <Card
+          title="total investido"
+          value={formatCurrency(result.investedAmount)}
+          info="capital principal usado como base para o cálculo."
+        />
+        <Card
+          title="juros acumulados"
+          value={formatCurrency(result.interestAmount)}
+          info="soma dos juros gerados ao longo do tempo sobre o principal."
+        />
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-6 mb-8">
@@ -682,10 +706,26 @@ function LossCompensationSimulator() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card title="resultado da operação" value={formatCurrency(monthlyResult)} />
-        <Card title="base tributável" value={formatCurrency(simulation.taxableBase)} />
-        <Card title="imposto devido" value={formatCurrency(simulation.taxDue)} />
-        <Card title="prejuízo remanescente" value={formatCurrency(simulation.remainingLoss)} />
+        <Card
+          title="resultado da operação"
+          value={formatCurrency(monthlyResult)}
+          info="diferença entre valor de venda e valor de compra da operação."
+        />
+        <Card
+          title="base tributável"
+          value={formatCurrency(simulation.taxableBase)}
+          info="parte do lucro que sobra apos compensar o prejuízo acumulado."
+        />
+        <Card
+          title="imposto devido"
+          value={formatCurrency(simulation.taxDue)}
+          info="valor de IR calculado sobre a base tributável com a alíquota informada."
+        />
+        <Card
+          title="prejuízo remanescente"
+          value={formatCurrency(simulation.remainingLoss)}
+          info="saldo de prejuízo que ainda pode ser usado em compensações futuras."
+        />
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-6 mb-8">
