@@ -18,6 +18,12 @@ const SIMULATOR_OPTIONS = [
     status: "ready",
   },
   {
+    id: "loss-compensation",
+    name: "compensação de prejuízo",
+    description: "simulação de abatimento e imposto",
+    status: "ready",
+  },
+  {
     id: "target-income",
     name: "meta por ativo",
     description: "quanto precisa investir para atingir renda alvo",
@@ -591,6 +597,168 @@ function SimpleInterestSimulator() {
   );
 }
 
+function LossCompensationSimulator() {
+  const [purchaseAmount, setPurchaseAmount] = useState(0);
+  const [saleAmount, setSaleAmount] = useState(0);
+  const [accumulatedLoss, setAccumulatedLoss] = useState(0);
+  const [taxRateInput, setTaxRateInput] = useState("20");
+
+  const monthlyResult = (Number(saleAmount) || 0) - (Number(purchaseAmount) || 0);
+
+  const parsedTaxRate = Number(taxRateInput || 0);
+  const taxRate = Number.isFinite(parsedTaxRate) ? Math.max(0, parsedTaxRate) : 0;
+
+  const simulation = useMemo(() => {
+    const currentAccumulatedLoss = Math.max(0, Number(accumulatedLoss) || 0);
+
+    if (monthlyResult < 0) {
+      const additionalLoss = Math.abs(monthlyResult);
+      return {
+        compensatedAmount: 0,
+        taxableBase: 0,
+        taxDue: 0,
+        remainingLoss: currentAccumulatedLoss + additionalLoss,
+        netResultAfterTax: monthlyResult,
+        additionalLoss,
+      };
+    }
+
+    const compensatedAmount = Math.min(monthlyResult, currentAccumulatedLoss);
+    const taxableBase = Math.max(monthlyResult - compensatedAmount, 0);
+    const taxDue = taxableBase * (taxRate / 100);
+    const remainingLoss = Math.max(currentAccumulatedLoss - compensatedAmount, 0);
+    const netResultAfterTax = monthlyResult - taxDue;
+
+    return {
+      compensatedAmount,
+      taxableBase,
+      taxDue,
+      remainingLoss,
+      netResultAfterTax,
+      additionalLoss: 0,
+    };
+  }, [accumulatedLoss, monthlyResult, taxRate]);
+
+  return (
+    <>
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">parâmetros</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MoneyInput
+            id="purchase-amount"
+            label="comprou por quanto"
+            value={purchaseAmount}
+            onValueChange={setPurchaseAmount}
+          />
+
+          <MoneyInput
+            id="sale-amount"
+            label="vendeu por quanto"
+            value={saleAmount}
+            onValueChange={setSaleAmount}
+          />
+
+          <MoneyInput
+            id="accumulated-loss"
+            label="prejuízo acumulado anterior"
+            value={accumulatedLoss}
+            onValueChange={setAccumulatedLoss}
+          />
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="tax-rate" className="text-sm text-muted">alíquota (%)</label>
+            <input
+              id="tax-rate"
+              type="number"
+              min="0"
+              step="0.01"
+              value={taxRateInput}
+              onChange={(event) => setTaxRateInput(event.target.value)}
+              className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              placeholder="20"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card title="resultado da operação" value={formatCurrency(monthlyResult)} />
+        <Card title="base tributável" value={formatCurrency(simulation.taxableBase)} />
+        <Card title="imposto devido" value={formatCurrency(simulation.taxDue)} />
+        <Card title="prejuízo remanescente" value={formatCurrency(simulation.remainingLoss)} />
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-3">resumo da compensação</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <p className="text-muted">prejuízo usado para compensar: <span className="text-text">{formatCurrency(simulation.compensatedAmount)}</span></p>
+          <p className="text-muted">resultado líquido após IR: <span className="text-text">{formatCurrency(simulation.netResultAfterTax)}</span></p>
+        </div>
+        {monthlyResult < 0 && (
+          <p className="text-warning text-sm mt-3">
+            houve prejuízo no mês. novo prejuízo acumulado: {formatCurrency(simulation.remainingLoss)}.
+          </p>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-xl font-semibold mb-4">detalhamento</h2>
+        <div className="overflow-x-auto border border-border rounded-lg">
+          <table className="w-full">
+            <thead className="bg-bg/60">
+              <tr className="border-b border-border text-left">
+                <th className="py-3 px-3 text-muted font-medium">item</th>
+                <th className="py-3 px-3 text-muted font-medium">valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">valor de compra</td>
+                <td className="py-3 px-3">{formatCurrency(purchaseAmount)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">valor de venda</td>
+                <td className="py-3 px-3">{formatCurrency(saleAmount)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">resultado do mês</td>
+                <td className="py-3 px-3">{formatCurrency(monthlyResult)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">prejuízo acumulado anterior</td>
+                <td className="py-3 px-3">{formatCurrency(accumulatedLoss)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">prejuízo compensado</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.compensatedAmount)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">base tributável</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.taxableBase)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">imposto ({taxRate.toFixed(2)}%)</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.taxDue)}</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-3 px-3">prejuízo remanescente</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.remainingLoss)}</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-3">resultado líquido após IR</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.netResultAfterTax)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+            simulador educacional. regras fiscais podem variar por tipo de ativo/operação.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function SimuladorAportes() {
   const [selectedOption, setSelectedOption] = useState("compound-interest");
 
@@ -605,6 +773,7 @@ function SimuladorAportes() {
 
       {selectedOption === "compound-interest" && <CompoundInterestSimulator />}
       {selectedOption === "simple-interest" && <SimpleInterestSimulator />}
+      {selectedOption === "loss-compensation" && <LossCompensationSimulator />}
     </div>
   );
 }
