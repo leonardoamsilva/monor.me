@@ -6,6 +6,11 @@ import { useCurrentMonth } from "../hooks/useCurrentMonth";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/format";
 
+function normalizeFiiType(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Outros";
+}
+
 function Dashboard() {
   const { fiis, refreshingQuotes, refreshFiisQuotes } = useFiis();
   const { settings } = useSettings();
@@ -44,6 +49,23 @@ function Dashboard() {
     const value = fii.cotas * currentPrice;
     return value > bigger.value ? { ticker: fii.ticker, value } : bigger;
   }, { ticker: "", value: 0 }) : null;
+
+  const diversificationByType = fiis.reduce((acc, fii) => {
+    const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
+    const positionValue = fii.cotas * currentPrice;
+    const type = normalizeFiiType(fii.tipo);
+
+    acc[type] = (acc[type] ?? 0) + positionValue;
+    return acc;
+  }, {});
+
+  const diversificationList = Object.entries(diversificationByType)
+    .map(([type, value]) => ({
+      type,
+      value,
+      percentage: totalCurrentValue > 0 ? (value / totalCurrentValue) * 100 : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div className="min-h-screen p-8">
@@ -137,6 +159,31 @@ function Dashboard() {
             showLegend={settings.dashboardChartShowLegend}
             showLabels={settings.dashboardChartShowLabels}
           />
+        </div>
+
+        <div className="mt-6 bg-surface border border-border rounded-xl p-6">
+          <h2 className="text-xl font-semibold mb-4">mapa de diversificação por tipo</h2>
+          {diversificationList.length === 0 ? (
+            <p className="text-sm text-muted">adicione ativos para acompanhar sua diversificação.</p>
+          ) : (
+            <div className="space-y-3">
+              {diversificationList.map((item) => (
+                <div key={item.type} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-text">{item.type}</span>
+                    <span className="text-sm text-muted">{formatCurrency(item.value)}</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-bg border border-border overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${item.percentage.toFixed(2)}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-muted">{item.percentage.toFixed(1)}%</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
     </div>

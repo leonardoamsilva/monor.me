@@ -25,7 +25,19 @@ function calculateMonthlyIncome(cotas, currentPrice, dividendYield) {
 export function useFiis() {
   const [fiis, setFiis] = useState(() => {
     const storedFiis = localStorage.getItem(FIIS_STORAGE_KEY);
-    return storedFiis ? JSON.parse(storedFiis) : [];
+    if (!storedFiis) return [];
+
+    try {
+      const parsed = JSON.parse(storedFiis);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map((fii) => ({
+        ...fii,
+        tipo: String(fii?.tipo ?? "Outros").trim() || "Outros",
+      }));
+    } catch {
+      return [];
+    }
   });
 
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
@@ -59,9 +71,11 @@ export function useFiis() {
 
           const currentPrice = details.price > 0 ? details.price : Number(fii.valorAtual ?? fii.precoMedio ?? 0);
           const currentDy = details.dividendYield > 0 ? details.dividendYield : Number(fii.dividendYield ?? 0);
+          const currentType = String(details.segmentType ?? fii.tipo ?? "Outros").trim() || "Outros";
 
           return {
             ...fii,
+            tipo: currentType,
             valorAtual: currentPrice,
             dividendYield: currentDy,
             rendaMensal: calculateMonthlyIncome(fii.cotas, currentPrice, currentDy),

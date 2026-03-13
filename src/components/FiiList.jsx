@@ -20,6 +20,7 @@ function FiiList({fiis, setFiis}) {
   const [error, setError] = useState("");
   const [editIndex, setEditIndex] = useState(null);
   const [dividendYield, setDividendYield] = useState(0);
+  const [tipo, setTipo] = useState('Outros');
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const tickerInputRef = useRef(null);
@@ -37,10 +38,13 @@ function FiiList({fiis, setFiis}) {
       if (details) {
         setPrecoMedio(details.price ?? 0);
         setDividendYield(details.dividendYield ?? 0);
+        setTipo(String(details.segmentType ?? 'Outros'));
       } else {
+        setTipo('Outros');
         setError("Não foi possível carregar os dados do ativo. Verifique a API/CORS.");
       }
     } catch {
+      setTipo('Outros');
       setError("Não foi possível carregar os dados do ativo. Preencha manualmente.");
     }
   }
@@ -139,6 +143,7 @@ function FiiList({fiis, setFiis}) {
 
     const newFii = {
       ticker: tickerCapitalized,
+      tipo: String(tipo || 'Outros').trim(),
       cotas: Number(cotas),
       precoMedio: Number(precoMedio),
       rendaMensal: Number(rendaMensal),
@@ -162,6 +167,7 @@ function FiiList({fiis, setFiis}) {
     setCotas(0);
     setPrecoMedio(0);
     setDividendYield(0);
+    setTipo('Outros');
 }
 
 function handleRemoveFii(indexToRemove) {
@@ -176,6 +182,7 @@ function handleEditFii(index) {
   setCotas(fii.cotas);
   setPrecoMedio(fii.precoMedio);
   setDividendYield(fii.dividendYield);
+  setTipo(String(fii.tipo ?? 'Outros'));
   setEditIndex(index);
 }
 
@@ -196,7 +203,7 @@ function yieldCalculation(yieldAnual) {
         <p className='text-xs text-muted'>cotações atualizadas em: {formatLastUpdateDate(latestQuoteAt)}</p>
       </div>
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
-    <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
+    <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-5 gap-3 mb-6'>
       <div className="relative">
         <Input
           ref={tickerInputRef}
@@ -264,7 +271,14 @@ function yieldCalculation(yieldAnual) {
           onChange={(e) => yieldCalculation(e.target.value)}
         />
 
-        <div className='md:col-span-4'>
+        <Input
+          label="tipo (ANBIMA)"
+          value={tipo}
+          disabled
+          readOnly
+        />
+
+        <div className='md:col-span-5'>
           <Button type="submit">{editIndex !== null ? "salvar" : "adicionar ativo"}</Button>
         </div>
     </form>
@@ -273,6 +287,7 @@ function yieldCalculation(yieldAnual) {
         <thead>
           <tr className='border-b border-border text-left'>
             <th className='pb-3 text-muted font-medium'>ativo</th>
+            <th className='pb-3 text-muted font-medium'>tipo</th>
             <th className='pb-3 text-muted font-medium'>cotas</th>
             <th className='pb-3 text-muted font-medium'>preço médio</th>
             <th className='pb-3 text-muted font-medium'>preço atual</th>
@@ -285,6 +300,7 @@ function yieldCalculation(yieldAnual) {
           {fiis.map((fii, index) => (
             <tr key={index} className='border-b border-border/50 hover:bg-surface-hover transition-colors'>
               <td className='py-4 font-semibold'>{fii.ticker}</td>
+              <td className='py-4'>{fii.tipo ?? 'Outros'}</td>
               <td className='py-4'>{fii.cotas}</td>
               <td className='py-4'>{formatCurrency(fii.precoMedio)}</td>
               <td className='py-4'>{formatCurrency(fii.valorAtual ?? fii.precoMedio)}</td>

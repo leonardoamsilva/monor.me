@@ -41,9 +41,19 @@ function normalizeDetails(payload) {
   dividendYield = toNumber(dividendYield);
   if (dividendYield > 0 && dividendYield < 1) dividendYield *= 100;
 
+  const segmentTypeRaw =
+    source?.segmento_anbima ??
+    source?.segmentoAnbima ??
+    source?.segmento ??
+    source?.segment ??
+    source?.fundamental?.segmento_anbima;
+
+  const segmentType = String(segmentTypeRaw ?? '').trim();
+
   return {
     price: toNumber(price),
     dividendYield,
+    segmentType: segmentType || 'Outros',
   };
 }
 
