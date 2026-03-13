@@ -73,13 +73,13 @@ function Settings() {
             checked={Boolean(settings.dashboardChartShowLegend)}
             onChange={(value) => updateSetting('dashboardChartShowLegend', value)}
             label="mostrar legenda"
-            description="exibe os tickers ao lado do grafico"
+            description="exibe os tickers ao lado do gráfico"
           />
           <Toggle
             checked={Boolean(settings.dashboardChartShowLabels)}
             onChange={(value) => updateSetting('dashboardChartShowLabels', value)}
             label="mostrar porcentagens"
-            description="mostra os percentuais no grafico e na legenda"
+            description="mostra os percentuais no gráfico e na legenda"
           />
         </div>
 

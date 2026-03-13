@@ -37,7 +37,7 @@ async function fetchMonthlyDividendsCached(month) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) return parsed;
     } catch {
-      // Ignore broken cache and refetch.
+      
     }
   }
 
@@ -194,7 +194,7 @@ export function useDividends(fiis, selectedMonth) {
         setYearlyPeriodLabel('');
         setAllTimePortfolioTotal(0);
         setAllTimePeriodLabel('');
-        setError('Nao foi possivel carregar os proventos reais neste momento.');
+        setError('Nao foi possível carregar os proventos reais neste momento.');
       } finally {
         if (!cancelled) setLoading(false);
       }

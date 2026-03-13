@@ -97,7 +97,7 @@ function Dashboard() {
             <p className="mt-3 text-sm text-muted">
               {incomeGoalRemaining > 0
                 ? `faltam ${formatCurrency(incomeGoalRemaining)} para bater a meta.`
-                : "meta atingida. parabens!"}
+                : "meta atingida. parabéns!"}
             </p>
           </>
         )}
@@ -107,17 +107,17 @@ function Dashboard() {
         <Card
           title="proventos reais do mês"
           value={loadingDividends ? "carregando..." : formatCurrency(monthlyPortfolioTotal)}
-          info="Estimativa baseada na posicao atual. O direito ao provento depende da data-com e da data de compra."
+          info="Estimativa baseada na posição atual. O direito ao provento depende da data-com e da data de compra."
         />
         <Card
           title="proventos reais no ano"
           value={loadingDividends ? "carregando..." : formatCurrency(yearlyPortfolioTotal)}
-          info={`Acumulado no ano usando a posicao atual para os meses consultados.${yearlyPeriodLabel ? ` Periodo: ${yearlyPeriodLabel}.` : ''}`}
+          info={`Acumulado no ano usando a posição atual para os meses consultados.${yearlyPeriodLabel ? ` Período: ${yearlyPeriodLabel}.` : ''}`}
         />
         <Card
           title="proventos reais (todos os anos)"
           value={loadingDividends ? "carregando..." : formatCurrency(allTimePortfolioTotal)}
-          info={`Acumulado total desde a entrada do usuario.${allTimePeriodLabel ? ` Periodo: ${allTimePeriodLabel}.` : ''}`}
+          info={`Acumulado total desde a entrada do usuário.${allTimePeriodLabel ? ` Período: ${allTimePeriodLabel}.` : ''}`}
         />
       </div>
 
