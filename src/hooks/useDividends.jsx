@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchMonthlyDividends } from '../services/dividendsApi';
 
 const DIVIDENDS_CACHE_PREFIX = 'monor:dividends:';
+const ELIGIBILITY_OVERRIDES_KEY = 'monor:dividends:eligibility-overrides';
 
 function getTodayCacheKey() {
   const now = new Date();
@@ -78,11 +79,90 @@ function buildMonthsAcrossYears(startYear, startMonth, endYear, endMonth) {
   return months;
 }
 
-function sumPortfolioDividends(rows, quotaByTicker) {
+function monthFromDate(value) {
+  if (!value || typeof value !== 'string') return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value.slice(0, 7);
+  return null;
+}
+
+function readEligibilityOverrides() {
+  try {
+    const raw = localStorage.getItem(ELIGIBILITY_OVERRIDES_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function writeEligibilityOverrides(overrides) {
+  localStorage.setItem(ELIGIBILITY_OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
+function buildEligibilityOverrideKey(row, monthReference = '') {
+  const ticker = String(row?.ticker ?? '').trim().toUpperCase();
+  const month =
+    monthFromDate(String(row?.comDate ?? '')) ??
+    monthFromDate(String(row?.paymentDate ?? '')) ??
+    String(monthReference ?? '').trim();
+
+  if (!ticker || !month) return null;
+  return `${ticker}|${month}`;
+}
+
+function toStartOfLocalDayTimestamp(value) {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]);
+    const day = Number(dateOnlyMatch[3]);
+    return new Date(year, month - 1, day).getTime();
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+}
+
+function isEligibleForDividend(entryDateTimestamp, row) {
+  if (!Number.isFinite(entryDateTimestamp)) return true;
+
+  const eligibilityDateTimestamp =
+    toStartOfLocalDayTimestamp(row?.comDate) ??
+    toStartOfLocalDayTimestamp(row?.paymentDate);
+
+  if (!Number.isFinite(eligibilityDateTimestamp)) return true;
+  return entryDateTimestamp <= eligibilityDateTimestamp;
+}
+
+function sumPortfolioDividends(rows, positionByTicker, eligibilityOverrides, monthReference) {
   return rows.reduce((sum, row) => {
-    const quotas = Number(quotaByTicker.get(row.ticker) ?? 0);
-    return sum + quotas * Number(row.valuePerShare ?? 0);
+    const position = positionByTicker.get(row.ticker);
+    const quotas = Number(position?.quotas ?? 0);
+    const entryDateTimestamp = position?.entryDateTimestamp;
+    const baseEligibility = isEligibleForDividend(entryDateTimestamp, row);
+    const overrideKey = buildEligibilityOverrideKey(row, monthReference);
+    const manuallyConfirmed = Boolean(overrideKey && eligibilityOverrides[overrideKey]);
+    const eligibleQuotas = baseEligibility || manuallyConfirmed ? quotas : 0;
+
+    return sum + eligibleQuotas * Number(row.valuePerShare ?? 0);
   }, 0);
+}
+
+function getEarliestEntryDate(positionByTicker) {
+  const timestamps = Array.from(positionByTicker.values())
+    .map((position) => position?.entryDateTimestamp)
+    .filter((time) => Number.isFinite(time));
+
+  if (timestamps.length === 0) return null;
+  return new Date(Math.min(...timestamps));
 }
 
 export function useDividends(fiis, selectedMonth) {
@@ -94,23 +174,24 @@ export function useDividends(fiis, selectedMonth) {
   const [allTimePeriodLabel, setAllTimePeriodLabel] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [eligibilityOverrides, setEligibilityOverrides] = useState(() => readEligibilityOverrides());
 
-  const quotaByTicker = useMemo(() => {
+  const positionByTicker = useMemo(() => {
     const map = new Map();
     fiis.forEach((fii) => {
-      map.set(String(fii.ticker ?? '').trim().toUpperCase(), Number(fii.cotas ?? 0));
+      const ticker = String(fii.ticker ?? '').trim().toUpperCase();
+      const quotas = Number(fii.cotas ?? 0);
+      const entryDateTimestamp = toStartOfLocalDayTimestamp(fii.createdAt);
+
+      map.set(ticker, {
+        quotas,
+        entryDateTimestamp,
+      });
     });
     return map;
   }, [fiis]);
 
-  const entryDate = useMemo(() => {
-    const timestamps = fiis
-      .map((fii) => Date.parse(String(fii.createdAt ?? '')))
-      .filter((time) => Number.isFinite(time));
-
-    if (timestamps.length === 0) return null;
-    return new Date(Math.min(...timestamps));
-  }, [fiis]);
+  const entryDate = useMemo(() => getEarliestEntryDate(positionByTicker), [positionByTicker]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,16 +205,32 @@ export function useDividends(fiis, selectedMonth) {
       try {
         const monthRows = await fetchMonthlyDividendsCached(selectedMonth);
         const enrichedRows = monthRows.map((row) => {
-          const quotas = Number(quotaByTicker.get(row.ticker) ?? 0);
+          const position = positionByTicker.get(row.ticker);
+          const quotas = Number(position?.quotas ?? 0);
+          const entryDateTimestamp = position?.entryDateTimestamp;
+          const baseEligibility = isEligibleForDividend(entryDateTimestamp, row);
+          const overrideKey = buildEligibilityOverrideKey(row, selectedMonth);
+          const manuallyConfirmed = Boolean(overrideKey && eligibilityOverrides[overrideKey]);
+          const eligibleForDividend = baseEligibility || manuallyConfirmed;
+
           return {
             ...row,
             quotas,
-            portfolioAmount: Number((quotas * row.valuePerShare).toFixed(2)),
-            inPortfolio: quotas > 0,
+            baseEligibility,
+            manuallyConfirmed,
+            canConfirmManually: quotas > 0 && !baseEligibility,
+            eligibleForDividend,
+            portfolioAmount: Number(((eligibleForDividend ? quotas : 0) * row.valuePerShare).toFixed(2)),
+            inPortfolio: quotas > 0 && eligibleForDividend,
           };
         });
 
-        const currentMonthTotal = sumPortfolioDividends(enrichedRows, quotaByTicker);
+        const currentMonthTotal = sumPortfolioDividends(
+          enrichedRows,
+          positionByTicker,
+          eligibilityOverrides,
+          selectedMonth
+        );
 
         const [selectedYearText, selectedMonthText] = String(selectedMonth).split('-');
         const selectedYear = Number(selectedYearText);
@@ -164,7 +261,7 @@ export function useDividends(fiis, selectedMonth) {
         const allTimeTotals = await Promise.all(
           allTimeMonths.map(async (month) => {
             const monthItems = await fetchMonthlyDividendsCached(month);
-            return sumPortfolioDividends(monthItems, quotaByTicker);
+            return sumPortfolioDividends(monthItems, positionByTicker, eligibilityOverrides, month);
           })
         );
 
@@ -174,7 +271,7 @@ export function useDividends(fiis, selectedMonth) {
         const ytdTotals = await Promise.all(
           months.map(async (month) => {
             const monthItems = await fetchMonthlyDividendsCached(month);
-            return sumPortfolioDividends(monthItems, quotaByTicker);
+            return sumPortfolioDividends(monthItems, positionByTicker, eligibilityOverrides, month);
           })
         );
 
@@ -205,7 +302,22 @@ export function useDividends(fiis, selectedMonth) {
     return () => {
       cancelled = true;
     };
-  }, [entryDate, quotaByTicker, selectedMonth]);
+  }, [eligibilityOverrides, entryDate, positionByTicker, selectedMonth]);
+
+  function confirmDividendEligibility(row, monthReference = selectedMonth) {
+    const key = buildEligibilityOverrideKey(row, monthReference);
+    if (!key) return;
+
+    setEligibilityOverrides((previous) => {
+      const next = {
+        ...previous,
+        [key]: true,
+      };
+
+      writeEligibilityOverrides(next);
+      return next;
+    });
+  }
 
   return {
     rows,
@@ -216,5 +328,6 @@ export function useDividends(fiis, selectedMonth) {
     allTimePeriodLabel,
     loading,
     error,
+    confirmDividendEligibility,
   };
 }

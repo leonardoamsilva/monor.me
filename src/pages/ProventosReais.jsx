@@ -27,6 +27,7 @@ function ProventosReais() {
     allTimePeriodLabel,
     loading,
     error,
+    confirmDividendEligibility,
   } = useDividends(fiis, activeMonth);
 
   const portfolioRows = useMemo(
@@ -67,6 +68,8 @@ function ProventosReais() {
   );
 
   function renderTableRow(row, hideBottomBorder = false) {
+    const showManualConfirmationAction = row.canConfirmManually && !row.manuallyConfirmed;
+
     return (
       <tr key={`${row.ticker}-${row.comDate ?? 'na'}`} className={hideBottomBorder ? '' : 'border-b border-border/50'}>
         <td className={`py-3 font-medium ${row.inPortfolio ? 'text-text' : 'text-muted'}`}>{row.ticker}</td>
@@ -74,7 +77,29 @@ function ProventosReais() {
         <td className="py-3">{formatCurrency(row.valuePerShare)}</td>
         <td className="py-3">{formatDate(row.comDate)}</td>
         <td className="py-3">{formatDate(row.paymentDate)}</td>
-        <td className="py-3">{row.inPortfolio ? formatCurrency(row.portfolioAmount) : '-'}</td>
+        <td className="py-3">
+          {row.inPortfolio ? formatCurrency(row.portfolioAmount) : '-'}
+          {row.manuallyConfirmed && (
+            <span className="ml-2 text-[11px] text-accent">confirmado manualmente</span>
+          )}
+          {showManualConfirmationAction && (
+            <button
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm(
+                  `Voce confirma que comprou ${row.ticker} antes da data-com e deseja contar esse provento?`
+                );
+
+                if (confirmed) {
+                  confirmDividendEligibility(row, activeMonth);
+                }
+              }}
+              className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted cursor-pointer hover:text-accent hover:border-accent/60 hover:bg-accent/10 transition-all duration-200"
+            >
+              comprei antes da data-com
+            </button>
+          )}
+        </td>
       </tr>
     );
   }
@@ -103,9 +128,9 @@ function ProventosReais() {
           onClick={() => {
             setAutoCurrentMonth(true);
           }}
-          className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:bg-surface-hover hover:text-text transition-colors"
+          className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:bg-surface-hover hover:text-text cursor-pointer transition-colors"
         >
-          usar mes atual automatico
+          usar mes atual automático
         </button>
       </div>
 
