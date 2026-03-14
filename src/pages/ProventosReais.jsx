@@ -117,11 +117,11 @@ function ProventosReais() {
     <div className="min-h-screen p-8">
       <header className="mb-8">
         <h1 className="text-3xl font-bold">proventos reais</h1>
-        <p className="text-muted">valores e datas do mes selecionado</p>
+        <p className="text-muted">valores e datas do mês selecionado</p>
       </header>
 
       <div className="mb-6 flex items-center gap-3">
-        <label className="text-sm text-muted" htmlFor="month-filter">mes</label>
+        <label className="text-sm text-muted" htmlFor="month-filter">mês</label>
         <input
           id="month-filter"
           type="month"
@@ -152,7 +152,7 @@ function ProventosReais() {
         <Card
           title="proventos reais no ano (carteira)"
           value={loading ? 'carregando...' : formatCurrency(yearlyPortfolioTotal)}
-          info={`Acumulado no ano com base na posição atual para cada mes consultado.${yearlyPeriodLabel ? ` Periodo: ${yearlyPeriodLabel}.` : ''}`}
+          info={`Acumulado no ano com base na posição atual para cada mes consultado.${yearlyPeriodLabel ? ` Período: ${yearlyPeriodLabel}.` : ''}`}
         />
         <Card
           title="proventos reais total (carteira)"
