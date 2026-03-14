@@ -323,6 +323,20 @@ export function useDividends(fiis, selectedMonth) {
     });
   }
 
+  function revokeDividendEligibility(row, monthReference = selectedMonth) {
+    const key = buildEligibilityOverrideKey(row, monthReference);
+    if (!key) return;
+
+    setEligibilityOverrides((previous) => {
+      if (!Object.prototype.hasOwnProperty.call(previous, key)) return previous;
+
+      const next = { ...previous };
+      delete next[key];
+      writeEligibilityOverrides(next);
+      return next;
+    });
+  }
+
   return {
     rows,
     monthlyPortfolioTotal,
@@ -333,5 +347,6 @@ export function useDividends(fiis, selectedMonth) {
     loading,
     error,
     confirmDividendEligibility,
+    revokeDividendEligibility,
   };
 }

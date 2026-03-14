@@ -17,6 +17,7 @@ function ProventosReais() {
   const currentMonth = useCurrentMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [autoCurrentMonth, setAutoCurrentMonth] = useState(true);
+  const [pendingConfirmationRow, setPendingConfirmationRow] = useState(null);
   const activeMonth = autoCurrentMonth ? currentMonth : selectedMonth;
   const {
     rows,
@@ -28,6 +29,7 @@ function ProventosReais() {
     loading,
     error,
     confirmDividendEligibility,
+    revokeDividendEligibility,
   } = useDividends(fiis, activeMonth);
 
   const portfolioRows = useMemo(
@@ -67,6 +69,12 @@ function ProventosReais() {
     [allRows, portfolioTickerSet]
   );
 
+  function handleConfirmManualEligibility() {
+    if (!pendingConfirmationRow) return;
+    confirmDividendEligibility(pendingConfirmationRow, activeMonth);
+    setPendingConfirmationRow(null);
+  }
+
   function renderTableRow(row, hideBottomBorder = false) {
     const showManualConfirmationAction = row.canConfirmManually && !row.manuallyConfirmed;
 
@@ -80,20 +88,21 @@ function ProventosReais() {
         <td className="py-3">
           {row.inPortfolio ? formatCurrency(row.portfolioAmount) : '-'}
           {row.manuallyConfirmed && (
-            <span className="ml-2 text-[11px] text-accent">confirmado manualmente</span>
+            <>
+              <span className="ml-2 text-[11px] text-accent">confirmado manualmente</span>
+              <button
+                type="button"
+                onClick={() => revokeDividendEligibility(row, activeMonth)}
+                className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-all duration-200"
+              >
+                desfazer
+              </button>
+            </>
           )}
           {showManualConfirmationAction && (
             <button
               type="button"
-              onClick={() => {
-                const confirmed = window.confirm(
-                  `Voce confirma que comprou ${row.ticker} antes da data-com e deseja contar esse provento?`
-                );
-
-                if (confirmed) {
-                  confirmDividendEligibility(row, activeMonth);
-                }
-              }}
+              onClick={() => setPendingConfirmationRow(row)}
               className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted cursor-pointer hover:text-accent hover:border-accent/60 hover:bg-accent/10 transition-all duration-200"
             >
               comprei antes da data-com
@@ -228,6 +237,42 @@ function ProventosReais() {
           )}
         </div>
       </section>
+
+      {pendingConfirmationRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <button
+            type="button"
+            aria-label="fechar modal"
+            onClick={() => setPendingConfirmationRow(null)}
+            className="absolute inset-0 bg-black/45 cursor-pointer"
+          />
+
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-2xl">
+            <h3 className="text-lg font-semibold text-text">confirmar provento</h3>
+            <p className="mt-2 text-sm text-muted">
+              voce confirma que comprou <strong className="text-text">{pendingConfirmationRow.ticker}</strong> antes da
+              data-com e deseja incluir esse provento nos calculos?
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingConfirmationRow(null)}
+                className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors"
+              >
+                cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmManualEligibility}
+                className="px-3 py-2 text-sm rounded-lg border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer transition-colors"
+              >
+                confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
