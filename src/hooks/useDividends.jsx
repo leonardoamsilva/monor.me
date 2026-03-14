@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchMonthlyDividends } from '../services/dividendsApi';
 
 const DIVIDENDS_CACHE_PREFIX = 'monor:dividends:';
-const ELIGIBILITY_OVERRIDES_KEY = 'monor:dividends:eligibility-overrides';
+const ELIGIBILITY_OVERRIDES_KEY = 'monor:eligibility-overrides';
+const LEGACY_ELIGIBILITY_OVERRIDES_KEY = 'monor:dividends:eligibility-overrides';
 
 function getTodayCacheKey() {
   const now = new Date();
@@ -87,7 +88,9 @@ function monthFromDate(value) {
 
 function readEligibilityOverrides() {
   try {
-    const raw = localStorage.getItem(ELIGIBILITY_OVERRIDES_KEY);
+    const raw =
+      localStorage.getItem(ELIGIBILITY_OVERRIDES_KEY) ??
+      localStorage.getItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
     if (!raw) return {};
 
     const parsed = JSON.parse(raw);
@@ -100,6 +103,7 @@ function readEligibilityOverrides() {
 
 function writeEligibilityOverrides(overrides) {
   localStorage.setItem(ELIGIBILITY_OVERRIDES_KEY, JSON.stringify(overrides));
+  localStorage.removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
 }
 
 function buildEligibilityOverrideKey(row, monthReference = '') {
