@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import Card from '../components/Card';
+import LoadingModal from '../components/ui/LoadingModal';
 import { useFiis } from '../hooks/useFiis';
 import { useDividends } from '../hooks/useDividends';
 import { formatCurrency } from '../utils/format';
 import { useCurrentMonth } from '../hooks/useCurrentMonth';
+import { withMinDelay } from '../utils/async';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -18,6 +20,8 @@ function ProventosReais() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [autoCurrentMonth, setAutoCurrentMonth] = useState(true);
   const [pendingConfirmationRow, setPendingConfirmationRow] = useState(null);
+  const [manualActionLoading, setManualActionLoading] = useState(false);
+  const [manualActionText, setManualActionText] = useState('processando provento...');
   const activeMonth = autoCurrentMonth ? currentMonth : selectedMonth;
   const {
     rows,
@@ -69,10 +73,32 @@ function ProventosReais() {
     [allRows, portfolioTickerSet]
   );
 
-  function handleConfirmManualEligibility() {
+  async function handleConfirmManualEligibility() {
     if (!pendingConfirmationRow) return;
-    confirmDividendEligibility(pendingConfirmationRow, activeMonth);
-    setPendingConfirmationRow(null);
+    setManualActionText('confirmando elegibilidade manual...');
+    setManualActionLoading(true);
+
+    try {
+      await withMinDelay(async () => {
+        confirmDividendEligibility(pendingConfirmationRow, activeMonth);
+        setPendingConfirmationRow(null);
+      }, 450);
+    } finally {
+      setManualActionLoading(false);
+    }
+  }
+
+  async function handleRevokeManualEligibility(row) {
+    setManualActionText('desfazendo confirmação manual...');
+    setManualActionLoading(true);
+
+    try {
+      await withMinDelay(async () => {
+        revokeDividendEligibility(row, activeMonth);
+      }, 380);
+    } finally {
+      setManualActionLoading(false);
+    }
   }
 
   function renderTableRow(row, hideBottomBorder = false) {
@@ -92,8 +118,9 @@ function ProventosReais() {
               <span className="ml-2 text-[11px] text-accent">confirmado manualmente</span>
               <button
                 type="button"
-                onClick={() => revokeDividendEligibility(row, activeMonth)}
-                className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-all duration-200"
+                onClick={() => handleRevokeManualEligibility(row)}
+                disabled={manualActionLoading}
+                className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 desfazer
               </button>
@@ -102,8 +129,9 @@ function ProventosReais() {
           {showManualConfirmationAction && (
             <button
               type="button"
+                disabled={manualActionLoading}
               onClick={() => setPendingConfirmationRow(row)}
-              className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted cursor-pointer hover:text-accent hover:border-accent/60 hover:bg-accent/10 transition-all duration-200"
+                className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted cursor-pointer hover:text-accent hover:border-accent/60 hover:bg-accent/10 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               comprei antes da data-com
             </button>
@@ -115,6 +143,12 @@ function ProventosReais() {
 
   return (
     <div className="min-h-screen p-8">
+      <LoadingModal
+        open={loading || manualActionLoading}
+        title={loading ? 'carregando proventos reais' : 'atualizando confirmação'}
+        description={loading ? 'consultando agenda e calculando valores da carteira...' : manualActionText}
+      />
+
       <header className="mb-8">
         <h1 className="text-3xl font-bold">proventos reais</h1>
         <p className="text-muted">valores e datas do mês selecionado</p>
@@ -130,14 +164,16 @@ function ProventosReais() {
             setSelectedMonth(e.target.value);
             setAutoCurrentMonth(false);
           }}
+          disabled={loading || manualActionLoading}
           className="bg-bg border border-border rounded-lg px-3 py-2 text-text"
         />
         <button
           type="button"
+          disabled={loading || manualActionLoading}
           onClick={() => {
             setAutoCurrentMonth(true);
           }}
-          className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:bg-surface-hover hover:text-text cursor-pointer transition-colors"
+          className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:bg-surface-hover hover:text-text cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           usar mes atual automático
         </button>
@@ -257,15 +293,17 @@ function ProventosReais() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
+                disabled={manualActionLoading}
                 onClick={() => setPendingConfirmationRow(null)}
-                className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors"
+                className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 cancelar
               </button>
               <button
                 type="button"
+                disabled={manualActionLoading}
                 onClick={handleConfirmManualEligibility}
-                className="px-3 py-2 text-sm rounded-lg border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer transition-colors"
+                className="px-3 py-2 text-sm rounded-lg border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 confirmar
               </button>

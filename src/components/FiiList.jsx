@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Button from './ui/Button';
 import Input from './ui/Input';
+import LoadingModal from './ui/LoadingModal';
 import { formatCurrency } from '../utils/format';
 import  useFiiSearch  from '../hooks/useFiiSearch';
+import { withMinDelay } from '../utils/async';
 
 function formatLastUpdateDate(value) {
   if (!value) return 'pendente';
@@ -23,6 +25,8 @@ function FiiList({fiis, setFiis}) {
   const [tipo, setTipo] = useState('Outros');
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [saving, setSaving] = useState(false);
+  const [removingIndex, setRemovingIndex] = useState(null);
   const tickerInputRef = useRef(null);
   const optionRefs = useRef([]);
 
@@ -113,8 +117,9 @@ function FiiList({fiis, setFiis}) {
     }
   }
 
-  function handleAddFii(e) {
+  async function handleAddFii(e) {
     e.preventDefault();
+    if (saving) return;
     setError("");
 
     
@@ -153,14 +158,19 @@ function FiiList({fiis, setFiis}) {
       lastQuoteAt: editIndex !== null ? fiis[editIndex]?.lastQuoteAt ?? null : null,
     }
 
-    if(editIndex !== null) {
-      const newList =fiis.map((fii, index) =>
-      index === editIndex ? newFii : fii
-    )
-    setFiis(newList);
-    setEditIndex(null);
-    } else {
-      setFiis([...fiis, newFii]);
+    setSaving(true);
+    try {
+      await withMinDelay(async () => {
+        if (editIndex !== null) {
+          const newList = fiis.map((fii, index) => (index === editIndex ? newFii : fii));
+          setFiis(newList);
+          setEditIndex(null);
+        } else {
+          setFiis([...fiis, newFii]);
+        }
+      }, 420);
+    } finally {
+      setSaving(false);
     }
 
     setTicker("");
@@ -168,12 +178,21 @@ function FiiList({fiis, setFiis}) {
     setPrecoMedio(0);
     setDividendYield(0);
     setTipo('Outros');
-}
+  }
 
-function handleRemoveFii(indexToRemove) {
-  const newFiis = fiis.filter((_, index) => index !== indexToRemove);
-  setFiis(newFiis);
-}
+  async function handleRemoveFii(indexToRemove) {
+    if (saving || removingIndex !== null) return;
+    setRemovingIndex(indexToRemove);
+
+    try {
+      await withMinDelay(async () => {
+        const newFiis = fiis.filter((_, index) => index !== indexToRemove);
+        setFiis(newFiis);
+      }, 350);
+    } finally {
+      setRemovingIndex(null);
+    }
+  }
 
 function handleEditFii(index) {
   const fii = fiis[index];
@@ -196,11 +215,31 @@ function yieldCalculation(yieldAnual) {
     .filter((value) => Number.isFinite(value))
     .reduce((latest, current) => (current > latest ? current : latest), 0);
 
+  const loadingModalOpen = loading || saving || removingIndex !== null;
+  const loadingModalTitle = loading
+    ? 'consultando ativo'
+    : saving
+      ? (editIndex !== null ? 'salvando alterações' : 'adicionando ativo')
+      : 'removendo ativo';
+  const loadingModalDescription = loading
+    ? 'buscando preço, DY e tipo do ativo...'
+    : saving
+      ? 'atualizando sua carteira...'
+      : 'atualizando sua carteira...';
+
   return (
     <div className='bg-surface border border-border rounded-xl p-6'>
+      <LoadingModal
+        open={loadingModalOpen}
+        title={loadingModalTitle}
+        description={loadingModalDescription}
+      />
+
       <div className='mb-6 flex items-end justify-between gap-4'>
         <h2 className='text-xl font-semibold'>minha carteira de FIIs e FIAGROs</h2>
-        <p className='text-xs text-muted'>cotações atualizadas em: {formatLastUpdateDate(latestQuoteAt)}</p>
+        <p className='text-xs text-muted'>
+          {saving ? 'salvando ativo...' : removingIndex !== null ? 'removendo ativo...' : `cotações atualizadas em: ${formatLastUpdateDate(latestQuoteAt)}`}
+        </p>
       </div>
     {error && <p className='text-danger bg-danger/10 border border-danger/20 rounded-lg px-4 py-2 mb-4'>{error}</p>}
     <form onSubmit={handleAddFii} className='grid grid-cols-1 md:grid-cols-5 gap-3 mb-6'>
@@ -221,6 +260,7 @@ function yieldCalculation(yieldAnual) {
               setHighlightedIndex(-1);
             }
           }}
+          disabled={saving || removingIndex !== null}
         />
         {(results.length > 0 || loading) && (
           <ul className="absolute top-full left-0 right-0 mt-1 z-10 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -253,6 +293,7 @@ function yieldCalculation(yieldAnual) {
           type="number"
           value={cotas}
           onChange={(e) => setCotas(e.target.value)}
+          disabled={saving || removingIndex !== null}
         />
         <Input
         label="preço médio"
@@ -269,6 +310,7 @@ function yieldCalculation(yieldAnual) {
           type="number"
           value={dividendYield}
           onChange={(e) => yieldCalculation(e.target.value)}
+          disabled={saving || removingIndex !== null}
         />
 
         <Input
@@ -279,7 +321,9 @@ function yieldCalculation(yieldAnual) {
         />
 
         <div className='md:col-span-5'>
-          <Button type="submit">{editIndex !== null ? "salvar" : "adicionar ativo"}</Button>
+          <Button type="submit" disabled={saving || removingIndex !== null || loading}>
+            {saving ? 'processando...' : editIndex !== null ? 'salvar' : 'adicionar ativo'}
+          </Button>
         </div>
     </form>
 
@@ -307,8 +351,10 @@ function yieldCalculation(yieldAnual) {
               <td className='py-4'>{formatCurrency(fii.rendaMensal)}</td>
               <td className='py-4'>{fii.dividendYield.toFixed(2)} %</td>
               <td className='py-4 flex gap-2'>
-                <Button onClick={() => handleEditFii(index)}>editar</Button>
-                <Button onClick={() => handleRemoveFii(index)} variant="danger">remover</Button>
+                <Button onClick={() => handleEditFii(index)} disabled={saving || removingIndex !== null}>editar</Button>
+                <Button onClick={() => handleRemoveFii(index)} variant="danger" disabled={saving || removingIndex !== null}>
+                  {removingIndex === index ? 'removendo...' : 'remover'}
+                </Button>
               </td>
             </tr>
           ))}

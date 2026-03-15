@@ -32,3 +32,68 @@ body {
   color: var(--color-text);
   min-height: 100vh;
 }
+
+@keyframes loadingModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loadingModalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes loadingModalPulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.loading-modal__backdrop {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.loading-modal__panel {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.loading-modal--visible .loading-modal__backdrop {
+  opacity: 1;
+  animation: loadingModalFadeIn 180ms ease;
+}
+
+.loading-modal--visible .loading-modal__panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: loadingModalPanelIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.loading-modal__description {
+  animation: loadingModalPulse 1400ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-modal__backdrop,
+  .loading-modal__panel,
+  .loading-modal__description {
+    animation: none;
+    transition: none;
+  }
+}

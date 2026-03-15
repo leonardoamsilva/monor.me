@@ -50,13 +50,19 @@ Para buscar os dados do FII selecionado, configure sua API local via `.env`:
 VITE_FII_API_BASE_URL=
 VITE_FII_API_DETAILS_PATH=/api/fii/:ticker
 VITE_FII_API_DIVIDENDS_PATH=/api/dividendos/:month
+VITE_FII_API_TOKEN=
+VITE_FII_API_TOKEN_HEADER=Authorization
+VITE_FII_API_TOKEN_PREFIX=Bearer
 VITE_FII_API_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
 Notas:
-- `VITE_FII_API_BASE_URL`: deixe vazio no dev para usar o proxy do Vite (evita CORS).
+- `VITE_FII_API_BASE_URL`: deixe vazio no dev para usar o proxy do Vite (evita CORS). Em producao, use a URL da API na Vercel (ex.: `https://sua-api.vercel.app`).
 - `VITE_FII_API_DETAILS_PATH`: rota usada pelo front.
 - `VITE_FII_API_DIVIDENDS_PATH`: rota usada para consultar proventos por mes (o front converte `YYYY-MM` para nome do mes, ex.: `marco`).
+- `VITE_FII_API_TOKEN`: token exigido pela API.
+- `VITE_FII_API_TOKEN_HEADER`: nome do header de autenticacao (padrao `Authorization`).
+- `VITE_FII_API_TOKEN_PREFIX`: prefixo do token (padrao `Bearer`; deixe vazio para enviar token puro).
 - `VITE_FII_API_PROXY_TARGET`: host real da sua API local.
 - Exemplo detalhes (dev): `/api/fii/HGLG11` (proxy para `http://127.0.0.1:8000/fii/HGLG11`).
 - Exemplo proventos (dev): `/api/dividendos/marco` (proxy para `http://127.0.0.1:8000/dividendos/marco`).

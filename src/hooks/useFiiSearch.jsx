@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FII_TICKERS } from '../data/fiiTickers';
 import { fetchFiiDetails } from '../services/fiiApi';
+import { withMinDelay } from '../utils/async';
 
 function useFiiSearch() {
   const [results, setResults] = useState([]);
@@ -20,7 +21,7 @@ function useFiiSearch() {
   async function getFiiDetails(ticker) {
     setLoading(true);
     try {
-      return await fetchFiiDetails(ticker);
+      return await withMinDelay(() => fetchFiiDetails(ticker), 500);
     } catch {
       return null;
     } finally {

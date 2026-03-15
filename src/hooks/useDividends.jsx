@@ -4,6 +4,7 @@ import { fetchMonthlyDividends } from '../services/dividendsApi';
 const DIVIDENDS_CACHE_PREFIX = 'monor:dividends:';
 const ELIGIBILITY_OVERRIDES_KEY = 'monor:eligibility-overrides';
 const LEGACY_ELIGIBILITY_OVERRIDES_KEY = 'monor:dividends:eligibility-overrides';
+const ELIGIBILITY_OVERRIDES_MIGRATION_KEY = 'monor:eligibility-overrides:migrated-v2';
 
 function getTodayCacheKey() {
   const now = new Date();
@@ -88,6 +89,15 @@ function monthFromDate(value) {
 
 function readEligibilityOverrides() {
   try {
+    // One-time retroactive cleanup: drop all old manual confirmations.
+    const migrationDone = localStorage.getItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY) === '1';
+    if (!migrationDone) {
+      localStorage.removeItem(ELIGIBILITY_OVERRIDES_KEY);
+      localStorage.removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
+      localStorage.setItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, '1');
+      return {};
+    }
+
     const raw =
       localStorage.getItem(ELIGIBILITY_OVERRIDES_KEY) ??
       localStorage.getItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
@@ -115,6 +125,28 @@ function buildEligibilityOverrideKey(row, monthReference = '') {
 
   if (!ticker || !month) return null;
   return `${ticker}|${month}`;
+}
+
+function extractTickerFromOverrideKey(key) {
+  const raw = String(key ?? '').trim();
+  if (!raw) return '';
+
+  const [ticker] = raw.split('|');
+  return String(ticker ?? '').trim().toUpperCase();
+}
+
+function cleanupOverridesByActivePositions(overrides, activeTickers) {
+  if (!overrides || typeof overrides !== 'object') return {};
+
+  const next = {};
+  Object.entries(overrides).forEach(([key, value]) => {
+    const ticker = extractTickerFromOverrideKey(key);
+    if (!ticker || !activeTickers.has(ticker)) return;
+    if (!value) return;
+    next[key] = true;
+  });
+
+  return next;
 }
 
 function toStartOfLocalDayTimestamp(value) {
@@ -153,7 +185,7 @@ function sumPortfolioDividends(rows, positionByTicker, eligibilityOverrides, mon
     const entryDateTimestamp = position?.entryDateTimestamp;
     const baseEligibility = isEligibleForDividend(entryDateTimestamp, row);
     const overrideKey = buildEligibilityOverrideKey(row, monthReference);
-    const manuallyConfirmed = Boolean(overrideKey && eligibilityOverrides[overrideKey]);
+    const manuallyConfirmed = quotas > 0 && Boolean(overrideKey && eligibilityOverrides[overrideKey]);
     const eligibleQuotas = baseEligibility || manuallyConfirmed ? quotas : 0;
 
     return sum + eligibleQuotas * Number(row.valuePerShare ?? 0);
@@ -195,7 +227,32 @@ export function useDividends(fiis, selectedMonth) {
     return map;
   }, [fiis]);
 
+  const activeTickers = useMemo(() => {
+    const set = new Set();
+    positionByTicker.forEach((position, ticker) => {
+      if (Number(position?.quotas ?? 0) > 0) {
+        set.add(ticker);
+      }
+    });
+    return set;
+  }, [positionByTicker]);
+
   const entryDate = useMemo(() => getEarliestEntryDate(positionByTicker), [positionByTicker]);
+
+  useEffect(() => {
+    setEligibilityOverrides((previous) => {
+      const cleaned = cleanupOverridesByActivePositions(previous, activeTickers);
+      const previousKeys = Object.keys(previous);
+      const cleanedKeys = Object.keys(cleaned);
+
+      if (previousKeys.length === cleanedKeys.length) {
+        return previous;
+      }
+
+      writeEligibilityOverrides(cleaned);
+      return cleaned;
+    });
+  }, [activeTickers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +271,7 @@ export function useDividends(fiis, selectedMonth) {
           const entryDateTimestamp = position?.entryDateTimestamp;
           const baseEligibility = isEligibleForDividend(entryDateTimestamp, row);
           const overrideKey = buildEligibilityOverrideKey(row, selectedMonth);
-          const manuallyConfirmed = Boolean(overrideKey && eligibilityOverrides[overrideKey]);
+          const manuallyConfirmed = quotas > 0 && Boolean(overrideKey && eligibilityOverrides[overrideKey]);
           const eligibleForDividend = baseEligibility || manuallyConfirmed;
 
           return {
@@ -310,7 +367,9 @@ export function useDividends(fiis, selectedMonth) {
 
   function confirmDividendEligibility(row, monthReference = selectedMonth) {
     const key = buildEligibilityOverrideKey(row, monthReference);
-    if (!key) return;
+    const ticker = String(row?.ticker ?? '').trim().toUpperCase();
+    const position = positionByTicker.get(ticker);
+    if (!key || Number(position?.quotas ?? 0) <= 0) return;
 
     setEligibilityOverrides((previous) => {
       const next = {

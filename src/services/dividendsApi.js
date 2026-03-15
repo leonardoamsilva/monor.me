@@ -1,3 +1,5 @@
+import { buildApiHeaders } from './apiClient';
+
 const API_BASE = (import.meta.env.VITE_FII_API_BASE_URL ?? '').replace(/\/$/, '');
 const DIVIDENDS_PATH_TEMPLATE = import.meta.env.VITE_FII_API_DIVIDENDS_PATH ?? '/api/dividendos/:month';
 
@@ -107,7 +109,9 @@ function extractList(payload) {
 }
 
 export async function fetchMonthlyDividends(month) {
-  const res = await fetch(buildDividendsUrl(month));
+  const res = await fetch(buildDividendsUrl(month), {
+    headers: buildApiHeaders(),
+  });
   if (!res.ok) {
     throw new Error('Nao foi possivel carregar os proventos do mes.');
   }
