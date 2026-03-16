@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchFiiDetails } from "../services/fiiApi";
+import { useAuth } from "../contexts/useAuth";
+import { fetchUserFiis, syncUserFiis } from "../services/portfolioStore";
 
-const FIIS_STORAGE_KEY = "monor:fiis";
-const LAST_REFRESH_DAY_KEY = "monor:fiis:last-refresh-day";
-const LAST_REFRESH_LEGACY_KEY = "monor:fiis:last-refresh";
+const fiisSessionCache = {
+  userId: null,
+  fiis: [],
+  hydrated: false,
+  lastRefreshDay: null,
+};
 
 function getTodayKey() {
   const now = new Date();
@@ -23,24 +28,14 @@ function calculateMonthlyIncome(cotas, currentPrice, dividendYield) {
 }
 
 export function useFiis() {
-  const [fiis, setFiis] = useState(() => {
-    const storedFiis = localStorage.getItem(FIIS_STORAGE_KEY);
-    if (!storedFiis) return [];
-
-    try {
-      const parsed = JSON.parse(storedFiis);
-      if (!Array.isArray(parsed)) return [];
-
-      return parsed.map((fii) => ({
-        ...fii,
-        tipo: String(fii?.tipo ?? "Outros").trim() || "Outros",
-      }));
-    } catch {
-      return [];
-    }
-  });
+  const { user, isAuthenticated } = useAuth();
+  const [fiis, setFiis] = useState([]);
+  const [loadingFiis, setLoadingFiis] = useState(true);
+  const [syncReady, setSyncReady] = useState(false);
 
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
+  const skipNextSyncRef = useRef(false);
+  const lastRefreshDayRef = useRef(fiisSessionCache.lastRefreshDay);
 
   const portfolioFingerprint = useMemo(
     () =>
@@ -53,12 +48,67 @@ export function useFiis() {
 
   const previousFingerprintRef = useRef(portfolioFingerprint);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFiisFromSupabase() {
+      if (!isAuthenticated || !user?.id) {
+        setFiis([]);
+        setLoadingFiis(false);
+        setSyncReady(false);
+        fiisSessionCache.userId = null;
+        fiisSessionCache.fiis = [];
+        fiisSessionCache.hydrated = false;
+        fiisSessionCache.lastRefreshDay = null;
+        lastRefreshDayRef.current = null;
+        return;
+      }
+
+      if (fiisSessionCache.hydrated && fiisSessionCache.userId === user.id) {
+        skipNextSyncRef.current = true;
+        setFiis(fiisSessionCache.fiis);
+        setLoadingFiis(false);
+        setSyncReady(true);
+        lastRefreshDayRef.current = fiisSessionCache.lastRefreshDay;
+        return;
+      }
+
+      setLoadingFiis(true);
+      setSyncReady(false);
+
+      try {
+        const remoteFiis = await fetchUserFiis(user.id);
+        if (cancelled) return;
+
+        skipNextSyncRef.current = true;
+        setFiis(remoteFiis);
+        setSyncReady(true);
+        fiisSessionCache.userId = user.id;
+        fiisSessionCache.fiis = remoteFiis;
+        fiisSessionCache.hydrated = true;
+        fiisSessionCache.lastRefreshDay = lastRefreshDayRef.current;
+      } catch {
+        if (cancelled) return;
+        setFiis([]);
+        setSyncReady(false);
+      } finally {
+        if (!cancelled) {
+          setLoadingFiis(false);
+        }
+      }
+    }
+
+    loadFiisFromSupabase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.id]);
+
   const refreshFiisQuotes = useCallback(async (force = false) => {
     if (refreshingQuotes || fiis.length === 0) return;
 
-    const lastRefreshDay =
-      localStorage.getItem(LAST_REFRESH_DAY_KEY) ??
-      localStorage.getItem(LAST_REFRESH_LEGACY_KEY);
+    const lastRefreshDay = lastRefreshDayRef.current;
 
     if (!force && !isDailyRefreshDue(lastRefreshDay)) return;
 
@@ -85,16 +135,28 @@ export function useFiis() {
       );
 
       setFiis(updatedFiis);
-      localStorage.setItem(LAST_REFRESH_DAY_KEY, getTodayKey());
-      localStorage.removeItem(LAST_REFRESH_LEGACY_KEY);
+      lastRefreshDayRef.current = getTodayKey();
+      fiisSessionCache.lastRefreshDay = lastRefreshDayRef.current;
     } finally {
       setRefreshingQuotes(false);
     }
   }, [fiis, refreshingQuotes]);
 
   useEffect(() => {
-    localStorage.setItem(FIIS_STORAGE_KEY, JSON.stringify(fiis));
-  }, [fiis]);
+    if (!isAuthenticated || !user?.id || loadingFiis || !syncReady) return;
+
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+
+    fiisSessionCache.userId = user.id;
+    fiisSessionCache.fiis = fiis;
+    fiisSessionCache.hydrated = true;
+    fiisSessionCache.lastRefreshDay = lastRefreshDayRef.current;
+
+    syncUserFiis(user.id, fiis).catch(() => {});
+  }, [fiis, isAuthenticated, loadingFiis, syncReady, user?.id]);
 
   useEffect(() => {
     // Daily automatic refresh only once per app entry/day.
@@ -112,6 +174,7 @@ export function useFiis() {
   return {
     fiis,
     setFiis,
+    loadingFiis,
     refreshFiisQuotes,
     refreshingQuotes,
   };

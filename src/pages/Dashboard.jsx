@@ -68,11 +68,11 @@ function Dashboard() {
     .sort((a, b) => b.value - a.value);
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold">dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">dashboard</h1>
         <p className="text-muted">bem-vindo ao monor.me</p>
-        <div className="mt-2 flex items-center gap-3">
+        <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <p className="text-xs text-muted">
             cotações: {refreshingQuotes ? "atualizando..." : "sincronização diária automática"}
           </p>
@@ -143,7 +143,7 @@ function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <Card title="total de ativos" value={totalAtivos} />
         <Card title="total de cotas na carteira" value={totalQuotas} />
         <Card title="renda anual (estimativa)" value={formatCurrency(yearlyIncome)} />

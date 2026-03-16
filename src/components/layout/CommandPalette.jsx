@@ -1,20 +1,27 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 function CommandPalette({ isOpen, onClose, navigate }) {
   const [search, setSearch] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const optionRefs = useRef([]);
 
-  const commands = [
-    {id: 1, name: "dashboard", description: "ir para o dashboard", action: () => navigate("/")},
-    {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => navigate("/carteira?focus=true")},
-    {id: 3, name: "carteira", description: "abrir carteira", action: () => navigate("/carteira")},
-    {id: 4, name: "proventos reais", description: "abrir proventos do mes", action: () => navigate("/proventos")},
-    {id: 5, name: "simulador de aportes", description: "juros compostos", action: () => navigate("/simulador-aportes")},
-    {id: 6, name: "configurações", description: "abrir configurações", action: () => navigate("/settings")},
-  ]
+  const commands = useMemo(() => [
+    {id: 1, name: "dashboard", description: "ir para o dashboard", action: () => navigate("/app")},
+    {id: 2, name: "adicionar fii", description: "adicionar novo fundo", action: () => navigate("/app/carteira?focus=true")},
+    {id: 3, name: "carteira", description: "abrir carteira", action: () => navigate("/app/carteira")},
+    {id: 4, name: "proventos reais", description: "abrir proventos do mes", action: () => navigate("/app/proventos")},
+    {id: 5, name: "simulador de aportes", description: "juros compostos", action: () => navigate("/app/simulador-aportes")},
+    {id: 6, name: "configurações", description: "abrir configurações", action: () => navigate("/app/settings")},
+  ], [navigate]);
 
-  const filteredCommands = commands.filter(cmd => cmd.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredCommands = useMemo(
+    () => commands.filter((cmd) => cmd.name.toLowerCase().includes(search.toLowerCase())),
+    [commands, search]
+  );
+
+  const clampedSelectedIndex = filteredCommands.length === 0
+    ? 0
+    : Math.min(selectedIndex, filteredCommands.length - 1);
 
   const handleClose = useCallback(() => {
     setSearch("");
@@ -24,38 +31,34 @@ function CommandPalette({ isOpen, onClose, navigate }) {
 
   useEffect(() => {
     if (!isOpen || filteredCommands.length === 0) return;
-    optionRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, filteredCommands.length, isOpen]);
+    optionRefs.current[clampedSelectedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [clampedSelectedIndex, filteredCommands.length, isOpen]);
 
-  useEffect(() => {
-    function handleKeyDown(e) {
-      if(e.key === "Escape") {
-        handleClose();
-      }
-
-      if(e.key === "ArrowDown"){
-        e.preventDefault();
-        setSelectedIndex(prev => prev < filteredCommands.length - 1 ? prev + 1 : prev);
-      }
-
-      if(e.key === "ArrowUp"){
-        e.preventDefault();
-        setSelectedIndex(prev => prev > 0 ? prev - 1 : prev);
-      }
-
-      if(e.key === "Enter" && filteredCommands.length > 0) {
-        e.preventDefault();
-        filteredCommands[selectedIndex].action();
-        handleClose();
-      }
+  function handleInputKeyDown(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleClose();
+      return;
     }
 
-    if(isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < filteredCommands.length - 1 ? prev + 1 : prev));
+      return;
     }
 
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, filteredCommands, selectedIndex, handleClose]);
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+      return;
+    }
+
+    if (e.key === "Enter" && filteredCommands.length > 0) {
+      e.preventDefault();
+      filteredCommands[clampedSelectedIndex].action();
+      handleClose();
+    }
+  }
 
   if(!isOpen) return null;
 
@@ -71,6 +74,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
           placeholder="digite um comando..." 
           value={search} 
           onChange={(e) => setSearch(e.target.value)} 
+          onKeyDown={handleInputKeyDown}
           autoFocus 
           className="w-full px-4 py-4 bg-transparent text-text placeholder:text-muted border-b border-border focus:outline-none" 
         />
@@ -83,7 +87,7 @@ function CommandPalette({ isOpen, onClose, navigate }) {
               }}
               onClick={() => { cmd.action(); handleClose(); }} 
               onMouseEnter = {() => setSelectedIndex(index)}
-              className={` w-full px-4 py-3 flex flex-col items-start transition-colors cursor-pointer ${index === selectedIndex ? 'bg-surface-hover' : ''}`}
+              className={` w-full px-4 py-3 flex flex-col items-start transition-colors cursor-pointer ${index === clampedSelectedIndex ? 'bg-surface-hover' : ''}`}
             >
               <span className="text-text">{cmd.name}</span>
               <span className="text-muted text-sm">{cmd.description}</span>

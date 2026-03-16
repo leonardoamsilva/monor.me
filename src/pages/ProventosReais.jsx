@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Card from '../components/Card';
 import LoadingModal from '../components/ui/LoadingModal';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useFiis } from '../hooks/useFiis';
 import { useDividends } from '../hooks/useDividends';
 import { formatCurrency } from '../utils/format';
@@ -15,11 +17,14 @@ function formatDate(value) {
 }
 
 function ProventosReais() {
+  const isMobile = useIsMobile();
   const { fiis } = useFiis();
   const currentMonth = useCurrentMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [autoCurrentMonth, setAutoCurrentMonth] = useState(true);
   const [pendingConfirmationRow, setPendingConfirmationRow] = useState(null);
+  const [pendingRevokeRow, setPendingRevokeRow] = useState(null);
+  const [highlightedRowKey, setHighlightedRowKey] = useState('');
   const [manualActionLoading, setManualActionLoading] = useState(false);
   const [manualActionText, setManualActionText] = useState('processando provento...');
   const activeMonth = autoCurrentMonth ? currentMonth : selectedMonth;
@@ -73,6 +78,8 @@ function ProventosReais() {
     [allRows, portfolioTickerSet]
   );
 
+  const showGlobalLoadingModal = loading && !pendingConfirmationRow && !pendingRevokeRow && !manualActionLoading;
+
   async function handleConfirmManualEligibility() {
     if (!pendingConfirmationRow) return;
     setManualActionText('confirmando elegibilidade manual...');
@@ -95,17 +102,27 @@ function ProventosReais() {
     try {
       await withMinDelay(async () => {
         revokeDividendEligibility(row, activeMonth);
+        setPendingRevokeRow(null);
       }, 380);
     } finally {
       setManualActionLoading(false);
     }
   }
 
-  function renderTableRow(row, hideBottomBorder = false) {
+  function renderTableRow(row, hideBottomBorder = false, rowKey = '') {
     const showManualConfirmationAction = row.canConfirmManually && !row.manuallyConfirmed;
+    const isHighlighted = rowKey && rowKey === highlightedRowKey;
+    const rowClassName = `${hideBottomBorder ? '' : 'border-b border-border/50'} ${isHighlighted ? 'bg-accent/10 ring-1 ring-accent/40' : ''}`.trim();
 
     return (
-      <tr key={`${row.ticker}-${row.comDate ?? 'na'}`} className={hideBottomBorder ? '' : 'border-b border-border/50'}>
+      <tr
+        key={rowKey}
+        className={rowClassName}
+        onClick={() => {
+          if (!isMobile || !rowKey) return;
+          setHighlightedRowKey((current) => (current === rowKey ? '' : rowKey));
+        }}
+      >
         <td className={`py-3 font-medium ${row.inPortfolio ? 'text-text' : 'text-muted'}`}>{row.ticker}</td>
         <td className="py-3">{row.type ?? '-'}</td>
         <td className="py-3">{formatCurrency(row.valuePerShare)}</td>
@@ -118,7 +135,7 @@ function ProventosReais() {
               <span className="ml-2 text-[11px] text-accent">confirmado manualmente</span>
               <button
                 type="button"
-                onClick={() => handleRevokeManualEligibility(row)}
+                onClick={() => setPendingRevokeRow(row)}
                 disabled={manualActionLoading}
                 className="ml-2 px-2 py-1 text-xs rounded-md border border-border/80 text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -142,19 +159,19 @@ function ProventosReais() {
   }
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <LoadingModal
-        open={loading || manualActionLoading}
-        title={loading ? 'carregando proventos reais' : 'atualizando confirmação'}
-        description={loading ? 'consultando agenda e calculando valores da carteira...' : manualActionText}
+        open={showGlobalLoadingModal || manualActionLoading}
+        title={manualActionLoading ? 'atualizando confirmação' : 'carregando proventos reais'}
+        description={manualActionLoading ? manualActionText : 'consultando agenda e calculando valores da carteira...'}
       />
 
       <header className="mb-8">
-        <h1 className="text-3xl font-bold">proventos reais</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">proventos reais</h1>
         <p className="text-muted">valores e datas do mês selecionado</p>
       </header>
 
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <label className="text-sm text-muted" htmlFor="month-filter">mês</label>
         <input
           id="month-filter"
@@ -165,7 +182,7 @@ function ProventosReais() {
             setAutoCurrentMonth(false);
           }}
           disabled={loading || manualActionLoading}
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text"
+          className="bg-bg border border-border rounded-lg px-3 py-2 text-text w-full sm:w-auto"
         />
         <button
           type="button"
@@ -228,8 +245,11 @@ function ProventosReais() {
 
       <section className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-xl font-semibold mb-4">todos os proventos do mês</h2>
+        {isMobile && (
+          <p className="text-xs text-muted mb-3">toque em uma linha para destacar enquanto navega horizontalmente.</p>
+        )}
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-border text-left">
                 <th className="pb-3 text-muted font-medium">ativo</th>
@@ -252,7 +272,11 @@ function ProventosReais() {
                 </tr>
               )}
               {portfolioRowsInTable.map((row, index) =>
-                renderTableRow(row, index === portfolioRowsInTable.length - 1)
+                renderTableRow(
+                  row,
+                  index === portfolioRowsInTable.length - 1,
+                  `portfolio-${index}-${row.ticker}-${row.comDate ?? 'na'}-${row.paymentDate ?? 'na'}-${row.type ?? 'na'}`
+                )
               )}
 
               {otherRowsInTable.length > 0 && (
@@ -265,7 +289,13 @@ function ProventosReais() {
                   </td>
                 </tr>
               )}
-              {otherRowsInTable.map(renderTableRow)}
+              {otherRowsInTable.map((row, index) =>
+                renderTableRow(
+                  row,
+                  false,
+                  `others-${index}-${row.ticker}-${row.comDate ?? 'na'}-${row.paymentDate ?? 'na'}-${row.type ?? 'na'}`
+                )
+              )}
             </tbody>
           </table>
           {allRows.length === 0 && !loading && (
@@ -274,8 +304,8 @@ function ProventosReais() {
         </div>
       </section>
 
-      {pendingConfirmationRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      {pendingConfirmationRow && createPortal(
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-0 sm:px-4">
           <button
             type="button"
             aria-label="fechar modal"
@@ -283,19 +313,19 @@ function ProventosReais() {
             className="absolute inset-0 bg-black/45 cursor-pointer"
           />
 
-          <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-2xl">
-            <h3 className="text-lg font-semibold text-text">confirmar provento</h3>
-            <p className="mt-2 text-sm text-muted">
+          <div className="mobile-sheet relative z-10 w-full max-w-md rounded-t-2xl sm:rounded-xl border border-border bg-surface p-4 sm:p-5 shadow-2xl">
+            <h3 className="text-base sm:text-lg font-semibold text-text">confirmar provento</h3>
+            <p className="mt-2 text-sm text-muted leading-relaxed">
               voce confirma que comprou <strong className="text-text">{pendingConfirmationRow.ticker}</strong> antes da
               data-com e deseja incluir esse provento nos calculos?
             </p>
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button
                 type="button"
                 disabled={manualActionLoading}
                 onClick={() => setPendingConfirmationRow(null)}
-                className="px-3 py-2 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto px-3 py-2.5 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 cancelar
               </button>
@@ -303,13 +333,52 @@ function ProventosReais() {
                 type="button"
                 disabled={manualActionLoading}
                 onClick={handleConfirmManualEligibility}
-                className="px-3 py-2 text-sm rounded-lg border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto px-3 py-2.5 text-sm rounded-lg border border-accent/50 bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 confirmar
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {pendingRevokeRow && createPortal(
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-0 sm:px-4">
+          <button
+            type="button"
+            aria-label="fechar modal"
+            onClick={() => setPendingRevokeRow(null)}
+            className="absolute inset-0 bg-black/45 cursor-pointer"
+          />
+
+          <div className="mobile-sheet relative z-10 w-full max-w-md rounded-t-2xl sm:rounded-xl border border-border bg-surface p-4 sm:p-5 shadow-2xl">
+            <h3 className="text-base sm:text-lg font-semibold text-text">desfazer confirmação</h3>
+            <p className="mt-2 text-sm text-muted leading-relaxed">
+              deseja remover a confirmação manual de <strong className="text-text">{pendingRevokeRow.ticker}</strong> para este mês?
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                disabled={manualActionLoading}
+                onClick={() => setPendingRevokeRow(null)}
+                className="w-full sm:w-auto px-3 py-2.5 text-sm rounded-lg border border-border text-muted hover:text-text hover:bg-surface-hover cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                cancelar
+              </button>
+              <button
+                type="button"
+                disabled={manualActionLoading}
+                onClick={() => handleRevokeManualEligibility(pendingRevokeRow)}
+                className="w-full sm:w-auto px-3 py-2.5 text-sm rounded-lg border border-danger/50 bg-danger/15 text-danger hover:bg-danger/25 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                desfazer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

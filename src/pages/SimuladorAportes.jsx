@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Card from "../components/Card";
+import Button from "../components/ui/Button";
 import MoneyInput from "../components/ui/MoneyInput";
+import { useIsMobile } from "../hooks/useIsMobile";
+import { withMinDelay } from "../utils/async";
 import { formatCurrency } from "../utils/format";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -185,7 +188,50 @@ function EvolutionTooltip({ active, payload }) {
   );
 }
 
+function useManualSimulation(calculateFn, deps, minDelayMs = 450) {
+  const calculateFnRef = useRef(calculateFn);
+  const [result, setResult] = useState(() => calculateFn());
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    calculateFnRef.current = calculateFn;
+  }, [calculateFn]);
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+
+    setIsDirty(true);
+  }, [...deps]);
+
+  async function calculateNow() {
+    setIsCalculating(true);
+
+    try {
+      await withMinDelay(async () => {
+        setResult(calculateFnRef.current());
+      }, minDelayMs);
+      setIsDirty(false);
+    } finally {
+      setIsCalculating(false);
+    }
+  }
+
+  return {
+    result,
+    isCalculating,
+    isDirty,
+    calculateNow,
+  };
+}
+
 function CompoundInterestSimulator() {
+  const isMobile = useIsMobile();
+  const [showMobileChart, setShowMobileChart] = useState(false);
   const [initialAmount, setInitialAmount] = useState(0);
   const [monthlyContribution, setMonthlyContribution] = useState(0);
   const [annualRateInput, setAnnualRateInput] = useState("");
@@ -200,7 +246,7 @@ function CompoundInterestSimulator() {
     : 0;
   const totalMonths = Math.max(0, Math.round(years * 12));
 
-  const result = useMemo(
+  const { result, isCalculating, calculateNow } = useManualSimulation(
     () =>
       calculateCompoundInterest({
         initialAmount: Number(initialAmount) || 0,
@@ -208,7 +254,8 @@ function CompoundInterestSimulator() {
         monthlyRate: monthlyRateEquivalent,
         months: totalMonths,
       }),
-    [initialAmount, monthlyContribution, monthlyRateEquivalent, totalMonths]
+    [initialAmount, monthlyContribution, monthlyRateEquivalent, totalMonths],
+    520
   );
 
   const yearlySnapshots = result.monthlySnapshots.filter((row) => row.month % 12 === 0);
@@ -227,6 +274,13 @@ function CompoundInterestSimulator() {
   const totalReturnPercent = result.investedAmount > 0
     ? (result.interestAmount / result.investedAmount) * 100
     : 0;
+
+  function handleClear() {
+    setInitialAmount(0);
+    setMonthlyContribution(0);
+    setAnnualRateInput("");
+    setYearsInput("");
+  }
 
   return (
     <>
@@ -275,22 +329,30 @@ function CompoundInterestSimulator() {
             />
           </div>
         </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleClear} disabled={isCalculating}>
+            limpar
+          </Button>
+          <Button type="button" onClick={calculateNow} disabled={isCalculating}>
+            {isCalculating ? "calculando..." : "calcular"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card
           title="montante final"
-          value={formatCurrency(result.finalAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.finalAmount)}
           info="valor projetado no fim do prazo: capital investido + rendimento acumulado."
         />
         <Card
           title="total investido"
-          value={formatCurrency(result.investedAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.investedAmount)}
           info="soma do valor inicial com todos os aportes feitos no periodo."
         />
         <Card
           title="juros acumulados"
-          value={formatCurrency(result.interestAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.interestAmount)}
           info="ganho total vindo dos juros ao longo do prazo."
         />
       </div>
@@ -317,8 +379,16 @@ function CompoundInterestSimulator() {
         </div>
         {result.monthlySnapshots.length === 0 ? (
           <p className="text-sm text-muted">defina um prazo maior que zero para visualizar o gráfico.</p>
+        ) : isMobile && !showMobileChart ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg/35 px-3 py-3">
+            <p className="text-sm text-muted">gráfico oculto para facilitar leitura no celular.</p>
+            <Button type="button" variant="secondary" onClick={() => setShowMobileChart(true)}>
+              ver gráfico
+            </Button>
+          </div>
         ) : (
-          <div className="h-72">
+          <div className="overflow-x-auto">
+            <div className="h-64 sm:h-72 min-w-[560px] sm:min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={result.monthlySnapshots} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
@@ -350,6 +420,14 @@ function CompoundInterestSimulator() {
                 />
               </LineChart>
             </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+        {isMobile && showMobileChart && result.monthlySnapshots.length > 0 && (
+          <div className="mt-3 flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setShowMobileChart(false)}>
+              ocultar gráfico
+            </Button>
           </div>
         )}
       </div>
@@ -409,6 +487,8 @@ function CompoundInterestSimulator() {
 }
 
 function SimpleInterestSimulator() {
+  const isMobile = useIsMobile();
+  const [showMobileChart, setShowMobileChart] = useState(false);
   const [initialAmount, setInitialAmount] = useState(0);
   const [annualRateInput, setAnnualRateInput] = useState("");
   const [yearsInput, setYearsInput] = useState("");
@@ -420,14 +500,15 @@ function SimpleInterestSimulator() {
   const monthlyRateEquivalent = annualRate / 12;
   const totalMonths = Math.max(0, Math.round(years * 12));
 
-  const result = useMemo(
+  const { result, isCalculating, calculateNow } = useManualSimulation(
     () =>
       calculateSimpleInterest({
         initialAmount: Number(initialAmount) || 0,
         monthlyRate: monthlyRateEquivalent,
         months: totalMonths,
       }),
-    [initialAmount, monthlyRateEquivalent, totalMonths]
+    [initialAmount, monthlyRateEquivalent, totalMonths],
+    520
   );
 
   const yearlySnapshots = result.monthlySnapshots.filter((row) => row.month % 12 === 0);
@@ -446,6 +527,12 @@ function SimpleInterestSimulator() {
   const totalReturnPercent = result.investedAmount > 0
     ? (result.interestAmount / result.investedAmount) * 100
     : 0;
+
+  function handleClear() {
+    setInitialAmount(0);
+    setAnnualRateInput("");
+    setYearsInput("");
+  }
 
   return (
     <>
@@ -488,22 +575,30 @@ function SimpleInterestSimulator() {
             </p>
           </div>
         </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleClear} disabled={isCalculating}>
+            limpar
+          </Button>
+          <Button type="button" onClick={calculateNow} disabled={isCalculating}>
+            {isCalculating ? "calculando..." : "calcular"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card
           title="montante final"
-          value={formatCurrency(result.finalAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.finalAmount)}
           info="valor final com juros simples, sem juros sobre juros."
         />
         <Card
           title="total investido"
-          value={formatCurrency(result.investedAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.investedAmount)}
           info="capital principal usado como base para o cálculo."
         />
         <Card
           title="juros acumulados"
-          value={formatCurrency(result.interestAmount)}
+          value={isCalculating ? "calculando..." : formatCurrency(result.interestAmount)}
           info="soma dos juros gerados ao longo do tempo sobre o principal."
         />
       </div>
@@ -530,8 +625,16 @@ function SimpleInterestSimulator() {
         </div>
         {result.monthlySnapshots.length === 0 ? (
           <p className="text-sm text-muted">defina um prazo maior que zero para visualizar o gráfico.</p>
+        ) : isMobile && !showMobileChart ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg/35 px-3 py-3">
+            <p className="text-sm text-muted">gráfico oculto para facilitar leitura no celular.</p>
+            <Button type="button" variant="secondary" onClick={() => setShowMobileChart(true)}>
+              ver gráfico
+            </Button>
+          </div>
         ) : (
-          <div className="h-72">
+          <div className="overflow-x-auto">
+            <div className="h-64 sm:h-72 min-w-[560px] sm:min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={result.monthlySnapshots} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
@@ -563,6 +666,14 @@ function SimpleInterestSimulator() {
                 />
               </LineChart>
             </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+        {isMobile && showMobileChart && result.monthlySnapshots.length > 0 && (
+          <div className="mt-3 flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setShowMobileChart(false)}>
+              ocultar gráfico
+            </Button>
           </div>
         )}
       </div>
@@ -627,17 +738,22 @@ function LossCompensationSimulator() {
   const [accumulatedLoss, setAccumulatedLoss] = useState(0);
   const [taxRateInput, setTaxRateInput] = useState("20");
 
-  const monthlyResult = (Number(saleAmount) || 0) - (Number(purchaseAmount) || 0);
-
-  const parsedTaxRate = Number(taxRateInput || 0);
-  const taxRate = Number.isFinite(parsedTaxRate) ? Math.max(0, parsedTaxRate) : 0;
-
-  const simulation = useMemo(() => {
+  const { result: simulation, isCalculating, calculateNow } = useManualSimulation(() => {
+    const normalizedPurchaseAmount = Number(purchaseAmount) || 0;
+    const normalizedSaleAmount = Number(saleAmount) || 0;
+    const parsedTaxRate = Number(taxRateInput || 0);
+    const normalizedTaxRate = Number.isFinite(parsedTaxRate) ? Math.max(0, parsedTaxRate) : 0;
+    const monthlyResult = normalizedSaleAmount - normalizedPurchaseAmount;
     const currentAccumulatedLoss = Math.max(0, Number(accumulatedLoss) || 0);
 
     if (monthlyResult < 0) {
       const additionalLoss = Math.abs(monthlyResult);
       return {
+        purchaseAmount: normalizedPurchaseAmount,
+        saleAmount: normalizedSaleAmount,
+        accumulatedLoss: currentAccumulatedLoss,
+        taxRate: normalizedTaxRate,
+        monthlyResult,
         compensatedAmount: 0,
         taxableBase: 0,
         taxDue: 0,
@@ -649,11 +765,16 @@ function LossCompensationSimulator() {
 
     const compensatedAmount = Math.min(monthlyResult, currentAccumulatedLoss);
     const taxableBase = Math.max(monthlyResult - compensatedAmount, 0);
-    const taxDue = taxableBase * (taxRate / 100);
+    const taxDue = taxableBase * (normalizedTaxRate / 100);
     const remainingLoss = Math.max(currentAccumulatedLoss - compensatedAmount, 0);
     const netResultAfterTax = monthlyResult - taxDue;
 
     return {
+      purchaseAmount: normalizedPurchaseAmount,
+      saleAmount: normalizedSaleAmount,
+      accumulatedLoss: currentAccumulatedLoss,
+      taxRate: normalizedTaxRate,
+      monthlyResult,
       compensatedAmount,
       taxableBase,
       taxDue,
@@ -661,7 +782,14 @@ function LossCompensationSimulator() {
       netResultAfterTax,
       additionalLoss: 0,
     };
-  }, [accumulatedLoss, monthlyResult, taxRate]);
+  }, [purchaseAmount, saleAmount, accumulatedLoss, taxRateInput], 480);
+
+  function handleClear() {
+    setPurchaseAmount(0);
+    setSaleAmount(0);
+    setAccumulatedLoss(0);
+    setTaxRateInput("20");
+  }
 
   return (
     <>
@@ -721,6 +849,7 @@ function LossCompensationSimulator() {
           <MoneyInput
             id="accumulated-loss"
             label="prejuízo acumulado anterior"
+            labelInfo="É o prejuízo de meses anteriores que você ainda pode usar para reduzir a base tributável de lucros futuros na mesma natureza de operação."
             value={accumulatedLoss}
             onValueChange={setAccumulatedLoss}
           />
@@ -739,27 +868,35 @@ function LossCompensationSimulator() {
             />
           </div>
         </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleClear} disabled={isCalculating}>
+            limpar
+          </Button>
+          <Button type="button" onClick={calculateNow} disabled={isCalculating}>
+            {isCalculating ? "calculando..." : "calcular"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card
           title="lucro/prejuízo da venda"
-          value={formatCurrency(monthlyResult)}
+          value={isCalculating ? "calculando..." : formatCurrency(simulation.monthlyResult)}
           info="resultado da venda: valor de venda menos valor de compra da operação."
         />
         <Card
           title="base tributável"
-          value={formatCurrency(simulation.taxableBase)}
+          value={isCalculating ? "calculando..." : formatCurrency(simulation.taxableBase)}
           info="lucro que sobra apos compensar prejuízo acumulado da mesma natureza, sobre o qual se aplica a alíquota."
         />
         <Card
           title="imposto devido"
-          value={formatCurrency(simulation.taxDue)}
+          value={isCalculating ? "calculando..." : formatCurrency(simulation.taxDue)}
           info="valor de IR calculado sobre a base tributável. para FIIs, a referencia usual em operações comuns e 20%."
         />
         <Card
           title="prejuízo remanescente"
-          value={formatCurrency(simulation.remainingLoss)}
+          value={isCalculating ? "calculando..." : formatCurrency(simulation.remainingLoss)}
           info="saldo de prejuízo que ainda pode ser usado em compensações futuras."
         />
       </div>
@@ -770,7 +907,7 @@ function LossCompensationSimulator() {
           <p className="text-muted">prejuízo usado para compensar: <span className="text-text">{formatCurrency(simulation.compensatedAmount)}</span></p>
           <p className="text-muted">resultado líquido após IR: <span className="text-text">{formatCurrency(simulation.netResultAfterTax)}</span></p>
         </div>
-        {monthlyResult < 0 && (
+        {simulation.monthlyResult < 0 && (
           <p className="text-warning text-sm mt-3">
             houve prejuízo no mês. novo prejuízo acumulado: {formatCurrency(simulation.remainingLoss)}.
           </p>
@@ -790,19 +927,19 @@ function LossCompensationSimulator() {
             <tbody>
               <tr className="border-b border-border/50">
                 <td className="py-3 px-3">valor de compra</td>
-                <td className="py-3 px-3">{formatCurrency(purchaseAmount)}</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.purchaseAmount)}</td>
               </tr>
               <tr className="border-b border-border/50">
                 <td className="py-3 px-3">valor de venda</td>
-                <td className="py-3 px-3">{formatCurrency(saleAmount)}</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.saleAmount)}</td>
               </tr>
               <tr className="border-b border-border/50">
                 <td className="py-3 px-3">lucro/prejuízo da venda</td>
-                <td className="py-3 px-3">{formatCurrency(monthlyResult)}</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.monthlyResult)}</td>
               </tr>
               <tr className="border-b border-border/50">
                 <td className="py-3 px-3">prejuízo acumulado anterior</td>
-                <td className="py-3 px-3">{formatCurrency(accumulatedLoss)}</td>
+                <td className="py-3 px-3">{formatCurrency(simulation.accumulatedLoss)}</td>
               </tr>
               <tr className="border-b border-border/50">
                 <td className="py-3 px-3">prejuízo compensado</td>
@@ -813,7 +950,7 @@ function LossCompensationSimulator() {
                 <td className="py-3 px-3">{formatCurrency(simulation.taxableBase)}</td>
               </tr>
               <tr className="border-b border-border/50">
-                <td className="py-3 px-3">imposto ({taxRate.toFixed(2)}%)</td>
+                <td className="py-3 px-3">imposto ({simulation.taxRate.toFixed(2)}%)</td>
                 <td className="py-3 px-3">{formatCurrency(simulation.taxDue)}</td>
               </tr>
               <tr className="border-b border-border/50">
@@ -839,9 +976,9 @@ function SimuladorAportes() {
   const [selectedOption, setSelectedOption] = useState("compound-interest");
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold">simulador de aportes</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">simulador de aportes</h1>
         <p className="text-muted">escolha o modelo de simulação; novos modos serão adicionados nesta página</p>
       </header>
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchMonthlyDividends } from '../services/dividendsApi';
+import { getItem, listKeys, removeItem, setItem } from '../services/storage';
 
 const DIVIDENDS_CACHE_PREFIX = 'monor:dividends:';
 const ELIGIBILITY_OVERRIDES_KEY = 'monor:eligibility-overrides';
@@ -19,13 +20,12 @@ function buildDividendsCacheKey(month, dayKey) {
 }
 
 function cleanupOldDividendsCache(dayKey) {
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const key = localStorage.key(index);
-    if (!key || !key.startsWith(DIVIDENDS_CACHE_PREFIX)) continue;
+  const keys = listKeys(DIVIDENDS_CACHE_PREFIX);
+  keys.forEach((key) => {
     if (!key.endsWith(`:${dayKey}`)) {
-      localStorage.removeItem(key);
+      removeItem(key);
     }
-  }
+  });
 }
 
 async function fetchMonthlyDividendsCached(month) {
@@ -33,19 +33,19 @@ async function fetchMonthlyDividendsCached(month) {
   cleanupOldDividendsCache(dayKey);
 
   const cacheKey = buildDividendsCacheKey(month, dayKey);
-  const cached = localStorage.getItem(cacheKey);
+  const cached = getItem(cacheKey, { fallbackToDevice: true });
 
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) return parsed;
     } catch {
-      
+      return null;
     }
   }
 
   const data = await fetchMonthlyDividends(month);
-  localStorage.setItem(cacheKey, JSON.stringify(data));
+  setItem(cacheKey, JSON.stringify(data));
   return data;
 }
 
@@ -90,17 +90,17 @@ function monthFromDate(value) {
 function readEligibilityOverrides() {
   try {
     // One-time retroactive cleanup: drop all old manual confirmations.
-    const migrationDone = localStorage.getItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY) === '1';
+    const migrationDone = getItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, { fallbackToDevice: true }) === '1';
     if (!migrationDone) {
-      localStorage.removeItem(ELIGIBILITY_OVERRIDES_KEY);
-      localStorage.removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
-      localStorage.setItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, '1');
+      removeItem(ELIGIBILITY_OVERRIDES_KEY);
+      removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
+      setItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, '1');
       return {};
     }
 
     const raw =
-      localStorage.getItem(ELIGIBILITY_OVERRIDES_KEY) ??
-      localStorage.getItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
+      getItem(ELIGIBILITY_OVERRIDES_KEY, { fallbackToDevice: true }) ??
+      getItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY, { fallbackToDevice: true });
     if (!raw) return {};
 
     const parsed = JSON.parse(raw);
@@ -112,8 +112,8 @@ function readEligibilityOverrides() {
 }
 
 function writeEligibilityOverrides(overrides) {
-  localStorage.setItem(ELIGIBILITY_OVERRIDES_KEY, JSON.stringify(overrides));
-  localStorage.removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
+  setItem(ELIGIBILITY_OVERRIDES_KEY, JSON.stringify(overrides));
+  removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
 }
 
 function buildEligibilityOverrideKey(row, monthReference = '') {

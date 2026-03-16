@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getItem, setItem } from '../services/storage';
 
 const SETTINGS_STORAGE_KEY = 'monor:settings';
 
@@ -24,12 +25,12 @@ function safeParseSettings(raw) {
 
 export function useSettings() {
   const [settings, setSettings] = useState(() => {
-    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const stored = getItem(SETTINGS_STORAGE_KEY, { fallbackToDevice: true });
     return stored ? safeParseSettings(stored) : DEFAULT_SETTINGS;
   });
 
   useEffect(() => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
   function updateSetting(key, value) {

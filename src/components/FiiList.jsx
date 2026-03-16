@@ -228,14 +228,14 @@ function yieldCalculation(yieldAnual) {
       : 'atualizando sua carteira...';
 
   return (
-    <div className='bg-surface border border-border rounded-xl p-6'>
+    <div className='bg-surface border border-border rounded-xl p-4 sm:p-6'>
       <LoadingModal
         open={loadingModalOpen}
         title={loadingModalTitle}
         description={loadingModalDescription}
       />
 
-      <div className='mb-6 flex items-end justify-between gap-4'>
+      <div className='mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 sm:gap-4'>
         <h2 className='text-xl font-semibold'>minha carteira de FIIs e FIAGROs</h2>
         <p className='text-xs text-muted'>
           {saving ? 'salvando ativo...' : removingIndex !== null ? 'removendo ativo...' : `cotações atualizadas em: ${formatLastUpdateDate(latestQuoteAt)}`}
@@ -327,7 +327,8 @@ function yieldCalculation(yieldAnual) {
         </div>
     </form>
 
-      <table className='w-full'>
+      <div className='overflow-x-auto'>
+      <table className='w-full min-w-[980px]'>
         <thead>
           <tr className='border-b border-border text-left'>
             <th className='pb-3 text-muted font-medium'>ativo</th>
@@ -343,14 +344,14 @@ function yieldCalculation(yieldAnual) {
         <tbody>
           {fiis.map((fii, index) => (
             <tr key={index} className='border-b border-border/50 hover:bg-surface-hover transition-colors'>
-              <td className='py-4 font-semibold'>{fii.ticker}</td>
-              <td className='py-4'>{fii.tipo ?? 'Outros'}</td>
-              <td className='py-4'>{fii.cotas}</td>
-              <td className='py-4'>{formatCurrency(fii.precoMedio)}</td>
-              <td className='py-4'>{formatCurrency(fii.valorAtual ?? fii.precoMedio)}</td>
-              <td className='py-4'>{formatCurrency(fii.rendaMensal)}</td>
-              <td className='py-4'>{fii.dividendYield.toFixed(2)} %</td>
-              <td className='py-4 flex gap-2'>
+              <td className='py-4 font-semibold whitespace-nowrap'>{fii.ticker}</td>
+              <td className='py-4 whitespace-nowrap'>{fii.tipo ?? 'Outros'}</td>
+              <td className='py-4 whitespace-nowrap'>{fii.cotas}</td>
+              <td className='py-4 whitespace-nowrap'>{formatCurrency(fii.precoMedio)}</td>
+              <td className='py-4 whitespace-nowrap'>{formatCurrency(fii.valorAtual ?? fii.precoMedio)}</td>
+              <td className='py-4 whitespace-nowrap'>{formatCurrency(fii.rendaMensal)}</td>
+              <td className='py-4 whitespace-nowrap'>{fii.dividendYield.toFixed(2)} %</td>
+              <td className='py-4 flex gap-2 whitespace-nowrap'>
                 <Button onClick={() => handleEditFii(index)} disabled={saving || removingIndex !== null}>editar</Button>
                 <Button onClick={() => handleRemoveFii(index)} variant="danger" disabled={saving || removingIndex !== null}>
                   {removingIndex === index ? 'removendo...' : 'remover'}
@@ -360,6 +361,7 @@ function yieldCalculation(yieldAnual) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

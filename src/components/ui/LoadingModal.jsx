@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 function LoadingModal({ open, title = 'carregando', description = 'aguarde um instante...' }) {
   const [shouldRender, setShouldRender] = useState(open);
@@ -28,7 +29,7 @@ function LoadingModal({ open, title = 'carregando', description = 'aguarde um in
 
   if (!shouldRender) return null;
 
-  return (
+  return createPortal(
     <div className={`fixed inset-0 z-[70] flex items-center justify-center px-4 ${visible ? 'loading-modal--visible' : ''}`}>
       <div className="loading-modal__backdrop absolute inset-0 bg-black/60 backdrop-blur-[1px]" aria-hidden="true" />
 
@@ -45,7 +46,8 @@ function LoadingModal({ open, title = 'carregando', description = 'aguarde um in
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

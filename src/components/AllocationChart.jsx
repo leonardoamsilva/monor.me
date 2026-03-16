@@ -1,4 +1,5 @@
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const COLORS = ['#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
@@ -15,6 +16,7 @@ function CustomTooltip({ active, payload }) {
 }
 
 function AllocationChart({ fiis, chartType = 'donut', showLegend = true, showLabels = true }) {
+  const isMobile = useIsMobile();
   const total = fiis.reduce((sum, fii) => {
     const currentPrice = Number(fii.valorAtual ?? fii.precoMedio);
     return sum + fii.cotas * currentPrice;
@@ -62,21 +64,44 @@ function AllocationChart({ fiis, chartType = 'donut', showLegend = true, showLab
       </div>
     )
   }
+
+  const mobileChartHeight = Math.max(240, data.length * 46);
+  const effectiveChartType = isMobile ? 'bar' : chartType;
+  const shouldShowLegend = showLegend && !isMobile;
+
   return (
-  <div className="flex items-center gap-8">
+  <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-6 lg:gap-8">
     <div className="flex-1">
-    <ResponsiveContainer width="100%" height={250}>
-      {chartType === 'bar' ? (
-        <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={isMobile ? mobileChartHeight : 250}>
+      {effectiveChartType === 'bar' ? (
+        <BarChart
+          data={data}
+          layout={isMobile ? 'vertical' : 'horizontal'}
+          margin={isMobile ? { top: 10, right: 8, left: 8, bottom: 0 } : { top: 10, right: 10, left: -20, bottom: 0 }}
+        >
           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
-          <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} />
-          <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+          {isMobile ? (
+            <>
+              <XAxis type="number" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} />
+              <YAxis type="category" dataKey="name" width={64} tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                {data.map((entry) => (
+                  <Cell key={entry.name} fill={entry.fill} />
+                ))}
+              </Bar>
+            </>
+          ) : (
+            <>
+              <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+              <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                {data.map((entry) => (
+                  <Cell key={entry.name} fill={entry.fill} />
+                ))}
+              </Bar>
+            </>
+          )}
           <Tooltip content={<CustomTooltip />} animationDuration={0} wrapperStyle={{ outline: "none", zIndex: 100 }} />
-          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-            {data.map((entry) => (
-              <Cell key={entry.name} fill={entry.fill} />
-            ))}
-          </Bar>
         </BarChart>
       ) : (
         <PieChart>
@@ -97,7 +122,7 @@ function AllocationChart({ fiis, chartType = 'donut', showLegend = true, showLab
       )}
     </ResponsiveContainer>
   </div>
-{showLegend && (
+{shouldShowLegend && (
 <div className="flex flex-col gap-2">
         {data.map((item) => (
           <div key={item.name} className="flex items-center gap-2">

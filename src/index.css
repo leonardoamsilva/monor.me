@@ -33,6 +33,18 @@ body {
   min-height: 100vh;
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 @keyframes loadingModalFadeIn {
   from {
     opacity: 0;
@@ -95,5 +107,217 @@ body {
   .loading-modal__description {
     animation: none;
     transition: none;
+  }
+}
+
+@keyframes pageEnterNeutral {
+  from {
+    opacity: 0.94;
+    transform: translateY(10px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0.9;
+    transform: translateY(-6px) scale(0.998);
+  }
+}
+
+@keyframes pageEnterForward {
+  from {
+    opacity: 0.94;
+    transform: translateX(24px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes pageExitForward {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0.9;
+    transform: translateX(-16px) scale(0.998);
+  }
+}
+
+@keyframes pageEnterBackward {
+  from {
+    opacity: 0.94;
+    transform: translateX(-24px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes pageExitBackward {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0.9;
+    transform: translateX(16px) scale(0.998);
+  }
+}
+
+.page-transition-shell {
+  position: relative;
+  will-change: transform, opacity;
+}
+
+.page-transition-shell.page-transition-enter {
+  animation: pageEnterNeutral 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page-transition-shell.page-transition-exit {
+  animation: pageExit 220ms cubic-bezier(0.55, 0.04, 0.7, 0.19);
+}
+
+.page-transition-shell.page-transition-forward.page-transition-enter {
+  animation: pageEnterForward 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page-transition-shell.page-transition-forward.page-transition-exit {
+  animation: pageExitForward 220ms cubic-bezier(0.55, 0.04, 0.7, 0.19);
+}
+
+.page-transition-shell.page-transition-backward.page-transition-enter {
+  animation: pageEnterBackward 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page-transition-shell.page-transition-backward.page-transition-exit {
+  animation: pageExitBackward 220ms cubic-bezier(0.55, 0.04, 0.7, 0.19);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-shell.page-transition-enter,
+  .page-transition-shell.page-transition-exit {
+    animation: none;
+  }
+}
+
+@keyframes mobileSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mobile-sheet {
+  animation: mobileSheetIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 640px) {
+  .mobile-sheet {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet {
+    animation: none;
+  }
+}
+
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal-up {
+  animation: revealUp 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(20px) scale(0.995);
+  filter: blur(4px);
+  transition:
+    opacity 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform, filter;
+}
+
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+.landing-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 38%, black 35%, transparent 82%);
+}
+
+@keyframes pageOpenFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.page-open-fade {
+  animation: pageOpenFade 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#como-funciona,
+#faq {
+  scroll-margin-top: 108px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up {
+    animation: none;
+  }
+
+  .reveal-on-scroll,
+  .reveal-on-scroll.is-visible {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+
+  .page-open-fade {
+    animation: none;
   }
 }
