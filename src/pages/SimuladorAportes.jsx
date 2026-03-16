@@ -3,9 +3,22 @@ import Card from "../components/Card";
 import Button from "../components/ui/Button";
 import MoneyInput from "../components/ui/MoneyInput";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { FII_TICKERS } from "../data/fiiTickers";
+import { fetchFiiDetails } from "../services/fiiApi";
 import { withMinDelay } from "../utils/async";
 import { formatCurrency } from "../utils/format";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const SIMULATOR_OPTIONS = [
   {
@@ -24,6 +37,12 @@ const SIMULATOR_OPTIONS = [
     id: "loss-compensation",
     name: "compensação de prejuízo",
     description: "simulação de abatimento e imposto",
+    status: "ready",
+  },
+  {
+    id: "weighted-allocation",
+    name: "alocação por percentual",
+    description: "divide aporte por peso e calcula cotas",
     status: "ready",
   },
   {
@@ -972,6 +991,683 @@ function LossCompensationSimulator() {
   );
 }
 
+function createAssetRow(id) {
+  return {
+    id,
+    ticker: "",
+    weightInput: "",
+    price: 0,
+    isLoadingPrice: false,
+    priceError: "",
+    lastFetchedTicker: "",
+  };
+}
+
+function clampAssetCount(value) {
+  return Math.max(1, Math.min(20, value));
+}
+
+function calculateAllocationScore({ quantities, targetAmounts, prices, totalAmount }) {
+  const spentByAsset = quantities.map((quantity, index) => quantity * prices[index]);
+  const spentTotal = spentByAsset.reduce((sum, value) => sum + value, 0);
+  const leftover = Math.max(totalAmount - spentTotal, 0);
+  const allocationError = spentByAsset.reduce(
+    (sum, spentAmount, index) => sum + Math.abs(spentAmount - targetAmounts[index]),
+    0
+  );
+
+  return {
+    spentByAsset,
+    spentTotal,
+    leftover,
+    score: allocationError + leftover * 0.45,
+  };
+}
+
+function findOptimizedQuantities({ totalAmount, weights, prices }) {
+  const targetAmounts = weights.map((weight) => totalAmount * (weight / 100));
+  const initialQuantities = targetAmounts.map((targetAmount, index) => {
+    const price = prices[index];
+    if (price <= 0) return 0;
+    return Math.max(0, Math.floor(targetAmount / price));
+  });
+
+  const activeIndexes = prices
+    .map((price, index) => ({ price, index }))
+    .filter((item) => item.price > 0 && weights[item.index] > 0)
+    .map((item) => item.index);
+
+  if (activeIndexes.length === 0) {
+    return {
+      quantities: initialQuantities,
+      targetAmounts,
+    };
+  }
+
+  const maxIterations = Math.min(160, activeIndexes.length * 22 + 18);
+  const beamWidth = Math.min(64, activeIndexes.length * 8 + 12);
+  const visited = new Set();
+  let bestState = {
+    quantities: initialQuantities,
+    ...calculateAllocationScore({
+      quantities: initialQuantities,
+      targetAmounts,
+      prices,
+      totalAmount,
+    }),
+  };
+
+  let beam = [bestState];
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const candidatesMap = new Map();
+
+    for (const state of beam) {
+      const stateKey = state.quantities.join("|");
+      if (!visited.has(stateKey)) {
+        visited.add(stateKey);
+        candidatesMap.set(stateKey, state);
+      }
+
+      for (const index of activeIndexes) {
+        const addQuantities = [...state.quantities];
+        addQuantities[index] += 1;
+
+        const addScore = calculateAllocationScore({
+          quantities: addQuantities,
+          targetAmounts,
+          prices,
+          totalAmount,
+        });
+
+        if (addScore.spentTotal <= totalAmount + 0.00001) {
+          const addKey = addQuantities.join("|");
+          const addState = {
+            quantities: addQuantities,
+            ...addScore,
+          };
+          const existing = candidatesMap.get(addKey);
+          if (!existing || addState.score < existing.score) {
+            candidatesMap.set(addKey, addState);
+          }
+        }
+
+        if (state.quantities[index] > 0) {
+          const removeQuantities = [...state.quantities];
+          removeQuantities[index] -= 1;
+
+          const removeKey = removeQuantities.join("|");
+          const removeState = {
+            quantities: removeQuantities,
+            ...calculateAllocationScore({
+              quantities: removeQuantities,
+              targetAmounts,
+              prices,
+              totalAmount,
+            }),
+          };
+          const existing = candidatesMap.get(removeKey);
+          if (!existing || removeState.score < existing.score) {
+            candidatesMap.set(removeKey, removeState);
+          }
+        }
+      }
+    }
+
+    const nextBeam = [...candidatesMap.values()]
+      .filter((state) => state.spentTotal <= totalAmount + 0.00001)
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        if (a.leftover !== b.leftover) return a.leftover - b.leftover;
+        return b.spentTotal - a.spentTotal;
+      })
+      .slice(0, beamWidth);
+
+    if (nextBeam.length === 0) break;
+
+    beam = nextBeam;
+
+    if (beam[0].score < bestState.score) {
+      bestState = beam[0];
+    }
+  }
+
+  return {
+    quantities: bestState.quantities,
+    targetAmounts,
+  };
+}
+
+function WeightedAllocationSimulator() {
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [assetsCountInput, setAssetsCountInput] = useState("3");
+  const [activeTickerRowId, setActiveTickerRowId] = useState(null);
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
+  const nextAssetIdRef = useRef(4);
+  const requestTokenRef = useRef({});
+  const [assets, setAssets] = useState(() => [
+    createAssetRow(1),
+    createAssetRow(2),
+    createAssetRow(3),
+  ]);
+
+  const normalizedAssets = useMemo(
+    () =>
+      assets.map((asset) => {
+        const parsedWeight = Number(asset.weightInput || 0);
+        return {
+          ...asset,
+          weight: Number.isFinite(parsedWeight) ? Math.max(0, parsedWeight) : 0,
+        };
+      }),
+    [assets]
+  );
+
+  const totalWeight = useMemo(
+    () => normalizedAssets.reduce((sum, asset) => sum + asset.weight, 0),
+    [normalizedAssets]
+  );
+
+  const isWeightValid = Math.abs(totalWeight - 100) < 0.0001;
+
+  const allocationRows = useMemo(() => {
+    if (!isWeightValid || totalAmount <= 0) {
+      return normalizedAssets.map((asset) => ({
+        ...asset,
+        allocatedAmount: 0,
+        sharesToBuy: 0,
+        spentAmount: 0,
+        remainingAmount: 0,
+      }));
+    }
+
+    const weights = normalizedAssets.map((asset) => asset.weight);
+    const prices = normalizedAssets.map((asset) => Number(asset.price) || 0);
+    const optimized = findOptimizedQuantities({
+      totalAmount,
+      weights,
+      prices,
+    });
+
+    return normalizedAssets.map((asset, index) => {
+      const allocatedAmount = optimized.targetAmounts[index] ?? 0;
+      const sharesToBuy = optimized.quantities[index] ?? 0;
+      const spentAmount = sharesToBuy * prices[index];
+      const remainingAmount = Math.max(allocatedAmount - spentAmount, 0);
+
+      return {
+        ...asset,
+        allocatedAmount,
+        sharesToBuy,
+        spentAmount,
+        remainingAmount,
+      };
+    });
+  }, [isWeightValid, normalizedAssets, totalAmount]);
+
+  const totalAllocatedByWeight = useMemo(
+    () => allocationRows.reduce((sum, row) => sum + row.allocatedAmount, 0),
+    [allocationRows]
+  );
+
+  const totalSpent = useMemo(
+    () => allocationRows.reduce((sum, row) => sum + row.spentAmount, 0),
+    [allocationRows]
+  );
+
+  const totalLeftover = useMemo(() => {
+    if (!isWeightValid || totalAmount <= 0) return totalAmount;
+    return Math.max(totalAmount - totalSpent, 0);
+  }, [isWeightValid, totalAmount, totalSpent]);
+
+  const allocationChartData = useMemo(
+    () =>
+      allocationRows
+        .filter((row) => row.weight > 0)
+        .map((row, index) => ({
+          ticker: row.ticker || `ativo ${index + 1}`,
+          alvo: Number(row.allocatedAmount.toFixed(2)),
+          comprado: Number(row.spentAmount.toFixed(2)),
+          sobra: Number(row.remainingAmount.toFixed(2)),
+        })),
+    [allocationRows]
+  );
+
+  function updateAsset(assetId, patch) {
+    setAssets((currentAssets) =>
+      currentAssets.map((asset) => (asset.id === assetId ? { ...asset, ...patch } : asset))
+    );
+  }
+
+  function resizeAssets(targetCount) {
+    const safeCount = clampAssetCount(targetCount);
+
+    setAssets((currentAssets) => {
+      if (safeCount === currentAssets.length) return currentAssets;
+      if (safeCount < currentAssets.length) return currentAssets.slice(0, safeCount);
+
+      const newAssets = [...currentAssets];
+      while (newAssets.length < safeCount) {
+        newAssets.push(createAssetRow(nextAssetIdRef.current));
+        nextAssetIdRef.current += 1;
+      }
+      return newAssets;
+    });
+
+    setAssetsCountInput(String(safeCount));
+  }
+
+  useEffect(() => {
+    for (const asset of assets) {
+      const normalizedTicker = asset.ticker.trim().toUpperCase();
+      if (!normalizedTicker) continue;
+      if (!FII_TICKERS.includes(normalizedTicker)) continue;
+      if (asset.lastFetchedTicker === normalizedTicker || asset.isLoadingPrice) continue;
+
+      const requestToken = `${asset.id}-${Date.now()}-${Math.random()}`;
+      requestTokenRef.current[asset.id] = requestToken;
+
+      setAssets((currentAssets) =>
+        currentAssets.map((currentAsset) =>
+          currentAsset.id === asset.id
+            ? {
+              ...currentAsset,
+              isLoadingPrice: true,
+              priceError: "",
+            }
+            : currentAsset
+        )
+      );
+
+      withMinDelay(async () => {
+        const details = await fetchFiiDetails(normalizedTicker);
+        return details;
+      }, 350)
+        .then((details) => {
+          if (requestTokenRef.current[asset.id] !== requestToken) return;
+
+          const hasValidPrice = Number(details?.price ?? 0) > 0;
+
+          setAssets((currentAssets) =>
+            currentAssets.map((currentAsset) =>
+              currentAsset.id === asset.id
+                ? {
+                  ...currentAsset,
+                  price: hasValidPrice ? Number(details.price) : 0,
+                  isLoadingPrice: false,
+                  priceError: hasValidPrice ? "" : "preço indisponível para este ticker",
+                  lastFetchedTicker: normalizedTicker,
+                }
+                : currentAsset
+            )
+          );
+        })
+        .catch(() => {
+          if (requestTokenRef.current[asset.id] !== requestToken) return;
+
+          setAssets((currentAssets) =>
+            currentAssets.map((currentAsset) =>
+              currentAsset.id === asset.id
+                ? {
+                  ...currentAsset,
+                  price: 0,
+                  isLoadingPrice: false,
+                  priceError: "não foi possível carregar o preço",
+                  lastFetchedTicker: normalizedTicker,
+                }
+                : currentAsset
+            )
+          );
+        });
+    }
+  }, [assets]);
+
+  function handleClear() {
+    setTotalAmount(0);
+    setAssetsCountInput("3");
+    nextAssetIdRef.current = 4;
+    requestTokenRef.current = {};
+    setActiveTickerRowId(null);
+    setHighlightedSuggestionIndex(-1);
+    setAssets([createAssetRow(1), createAssetRow(2), createAssetRow(3)]);
+  }
+
+  function handleAssetsCountInput(nextValue) {
+    setAssetsCountInput(nextValue);
+
+    if (nextValue === "") return;
+
+    const parsedValue = Number(nextValue || 0);
+    if (!Number.isFinite(parsedValue)) return;
+
+    const normalizedCount = clampAssetCount(Math.round(parsedValue));
+    resizeAssets(normalizedCount);
+  }
+
+  function handleAssetsCountBlur() {
+    if (assetsCountInput === "") {
+      setAssetsCountInput(String(assets.length));
+      return;
+    }
+
+    const parsedValue = Number(assetsCountInput);
+    if (!Number.isFinite(parsedValue)) {
+      setAssetsCountInput(String(assets.length));
+      return;
+    }
+
+    const normalizedCount = clampAssetCount(Math.round(parsedValue));
+    resizeAssets(normalizedCount);
+  }
+
+  function findTickerSuggestions(query) {
+    const normalizedQuery = query.trim().toUpperCase();
+    if (normalizedQuery.length < 2) return [];
+    return FII_TICKERS.filter((ticker) => ticker.includes(normalizedQuery)).slice(0, 20);
+  }
+
+  function handleSelectTicker(assetId, selectedTicker) {
+    const normalizedTicker = String(selectedTicker ?? "")
+      .toUpperCase()
+      .replace(/\s+/g, "")
+      .slice(0, 12);
+
+    updateAsset(assetId, {
+      ticker: normalizedTicker,
+      price: 0,
+      priceError: "",
+      lastFetchedTicker: "",
+    });
+
+    setActiveTickerRowId(null);
+    setHighlightedSuggestionIndex(-1);
+  }
+
+  function handleTickerKeyDown(event, assetId, suggestions) {
+    if (!suggestions.length) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveTickerRowId(assetId);
+      setHighlightedSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveTickerRowId(assetId);
+      setHighlightedSuggestionIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+      return;
+    }
+
+    if (event.key === "Enter" && highlightedSuggestionIndex >= 0) {
+      event.preventDefault();
+      handleSelectTicker(assetId, suggestions[highlightedSuggestionIndex]);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setActiveTickerRowId(null);
+      setHighlightedSuggestionIndex(-1);
+    }
+  }
+
+  return (
+    <>
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">parâmetros</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MoneyInput
+            id="weighted-total-amount"
+            label="valor total para investir"
+            value={totalAmount}
+            onValueChange={setTotalAmount}
+          />
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="weighted-assets-count" className="text-sm text-muted">quantidade de ativos</label>
+            <input
+              id="weighted-assets-count"
+              type="number"
+              min="1"
+              max="20"
+              step="1"
+              value={assetsCountInput}
+              onChange={(event) => handleAssetsCountInput(event.target.value)}
+              onBlur={handleAssetsCountBlur}
+              className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              placeholder="3"
+            />
+            <p className="text-xs text-muted">mínimo 1 e máximo 20 ativos.</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg/35 px-4 py-3">
+          <div className="text-sm">
+            <p className="text-muted">soma dos percentuais</p>
+            <p className={`font-semibold ${isWeightValid ? "text-success" : "text-warning"}`}>
+              {totalWeight.toFixed(2)}%
+            </p>
+          </div>
+          <div className="text-xs text-muted">
+            {isWeightValid
+              ? "percentuais fechados em 100%. pronto para calcular cotas."
+              : "ajuste os percentuais para fechar exatamente 100%."}
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleClear}>
+            limpar
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">ativos e pesos</h2>
+
+        <div className="space-y-3">
+          {assets.map((asset, index) => {
+            const suggestions = findTickerSuggestions(asset.ticker);
+            const normalizedTicker = asset.ticker.trim().toUpperCase();
+            const hasTypedTicker = normalizedTicker.length > 0;
+            const isKnownTicker = FII_TICKERS.includes(normalizedTicker);
+            const showSuggestions = activeTickerRowId === asset.id && suggestions.length > 0;
+
+            return (
+              <div key={asset.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 rounded-lg border border-border p-3 bg-bg/35">
+                <div className="md:col-span-1 flex items-center text-xs text-muted">
+                  ativo {index + 1}
+                </div>
+
+                <div className="md:col-span-4 flex flex-col gap-1">
+                  <label htmlFor={`weighted-ticker-${asset.id}`} className="text-sm text-muted">ticker</label>
+                  <div className="relative">
+                    <input
+                      id={`weighted-ticker-${asset.id}`}
+                      value={asset.ticker}
+                      onFocus={() => {
+                        setActiveTickerRowId(asset.id);
+                        setHighlightedSuggestionIndex(-1);
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setActiveTickerRowId((current) => (current === asset.id ? null : current));
+                          setHighlightedSuggestionIndex(-1);
+                        }, 120);
+                      }}
+                      onKeyDown={(event) => handleTickerKeyDown(event, asset.id, suggestions)}
+                      onChange={(event) => {
+                        const nextTicker = event.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 12);
+                        updateAsset(asset.id, {
+                          ticker: nextTicker,
+                          price: 0,
+                          priceError: "",
+                          lastFetchedTicker: "",
+                        });
+                        setActiveTickerRowId(asset.id);
+                        setHighlightedSuggestionIndex(-1);
+                      }}
+                      className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors w-full"
+                      placeholder="ex: HGLG11"
+                    />
+                    {showSuggestions && (
+                      <ul className="absolute top-full left-0 right-0 mt-1 z-10 bg-surface border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {suggestions.map((ticker, suggestionIndex) => (
+                          <li key={ticker}>
+                            <button
+                              type="button"
+                              className={`w-full px-4 py-2 text-left text-text transition-colors ${
+                                highlightedSuggestionIndex === suggestionIndex
+                                  ? "bg-surface-hover"
+                                  : "hover:bg-surface-hover"
+                              }`}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleSelectTicker(asset.id, ticker)}
+                            >
+                              {ticker}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 flex flex-col gap-1">
+                  <label htmlFor={`weighted-percentage-${asset.id}`} className="text-sm text-muted">percentual (%)</label>
+                  <input
+                    id={`weighted-percentage-${asset.id}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={asset.weightInput}
+                    onChange={(event) => updateAsset(asset.id, { weightInput: event.target.value })}
+                    className="bg-bg border border-border rounded-lg px-4 py-2 text-text placeholder:text-muted/50 focus:outline-none focus:border-accent transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="md:col-span-4 flex flex-col gap-1">
+                  <label className="text-sm text-muted">preço atual</label>
+                  <div className="bg-bg border border-border rounded-lg px-4 py-2 text-text min-h-[42px] flex items-center justify-between">
+                    <span>
+                      {asset.isLoadingPrice
+                        ? "carregando..."
+                        : asset.price > 0
+                          ? formatCurrency(asset.price)
+                          : "--"}
+                    </span>
+                    {asset.priceError && <span className="text-warning text-xs">{asset.priceError}</span>}
+                  </div>
+                  {hasTypedTicker && !isKnownTicker && (
+                    <p className="text-xs text-warning">ticker não encontrado na base local.</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-xs text-muted mt-4">
+          referência de preço: cotação atual retornada pela API no momento da consulta ({new Date().toLocaleDateString("pt-BR")}).
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <Card
+          title="total para investir"
+          value={formatCurrency(totalAmount)}
+          info="valor base informado para distribuir entre os ativos escolhidos."
+        />
+        <Card
+          title="alocado por peso"
+          value={formatCurrency(totalAllocatedByWeight)}
+          info="soma da verba teórica por percentual antes de arredondar para cotas inteiras."
+        />
+        <Card
+          title="valor em cotas"
+          value={formatCurrency(totalSpent)}
+          info="quanto realmente será investido após calcular quantidade inteira de cotas."
+        />
+        <Card
+          title="saldo restante"
+          value={formatCurrency(totalLeftover)}
+          info="valor que sobra por não ser possível comprar frações de cota."
+        />
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-xl font-semibold mb-4">resultado por ativo</h2>
+
+        {!isWeightValid ? (
+          <p className="text-sm text-warning">os percentuais precisam somar 100% para liberar o cálculo completo.</p>
+        ) : totalAmount <= 0 ? (
+          <p className="text-sm text-muted">informe um valor total para investir e selecione os tickers.</p>
+        ) : (
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-bg/60">
+                <tr className="border-b border-border text-left">
+                  <th className="py-3 px-3 text-muted font-medium">ticker</th>
+                  <th className="py-3 px-3 text-muted font-medium">peso</th>
+                  <th className="py-3 px-3 text-muted font-medium">preço</th>
+                  <th className="py-3 px-3 text-muted font-medium">verba</th>
+                  <th className="py-3 px-3 text-muted font-medium">cotas</th>
+                  <th className="py-3 px-3 text-muted font-medium">gasto</th>
+                  <th className="py-3 px-3 text-muted font-medium">sobra</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocationRows.map((row) => (
+                  <tr key={row.id} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                    <td className="py-3 px-3">{row.ticker || "--"}</td>
+                    <td className="py-3 px-3">{row.weight.toFixed(2)}%</td>
+                    <td className="py-3 px-3">{row.price > 0 ? formatCurrency(row.price) : "--"}</td>
+                    <td className="py-3 px-3">{formatCurrency(row.allocatedAmount)}</td>
+                    <td className="py-3 px-3">{row.sharesToBuy}</td>
+                    <td className="py-3 px-3">{formatCurrency(row.spentAmount)}</td>
+                    <td className="py-3 px-3">{formatCurrency(row.remainingAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+              cálculo otimizado com cotas inteiras para aproximar os pesos e reduzir sobra, sem ultrapassar o valor total.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mt-8">
+        <h2 className="text-xl font-semibold mb-4">gráfico de alocação</h2>
+        {allocationChartData.length === 0 ? (
+          <p className="text-sm text-muted">preencha os ativos e percentuais para visualizar o gráfico.</p>
+        ) : (
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={allocationChartData} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
+                <XAxis dataKey="ticker" tick={{ fill: "#9CA3AF", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#9CA3AF", fontSize: 11 }} tickFormatter={(value) => formatCurrency(value)} />
+                <Tooltip
+                  formatter={(value) => formatCurrency(Number(value) || 0)}
+                  wrapperStyle={{ outline: "none" }}
+                />
+                <Legend />
+                <Bar dataKey="alvo" name="alvo por peso" fill="#3B82F6" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="comprado" name="comprado" fill="#10B981" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="sobra" name="sobra" fill="#F59E0B" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SimuladorAportes() {
   const [selectedOption, setSelectedOption] = useState("compound-interest");
 
@@ -987,6 +1683,7 @@ function SimuladorAportes() {
       {selectedOption === "compound-interest" && <CompoundInterestSimulator />}
       {selectedOption === "simple-interest" && <SimpleInterestSimulator />}
       {selectedOption === "loss-compensation" && <LossCompensationSimulator />}
+      {selectedOption === "weighted-allocation" && <WeightedAllocationSimulator />}
     </div>
   );
 }

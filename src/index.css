@@ -33,6 +33,36 @@ body {
   min-height: 100vh;
 }
 
+/* Mantem inputs no tema escuro, incluindo foco/autofill do navegador. */
+input,
+textarea,
+select {
+  color-scheme: dark;
+  color: var(--color-text);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg) inset;
+  box-shadow: 0 0 0 1000px var(--color-bg) inset;
+  caret-color: var(--color-text);
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }
