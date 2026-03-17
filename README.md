@@ -50,22 +50,65 @@ Para buscar os dados do FII selecionado, configure sua API local via `.env`:
 VITE_FII_API_BASE_URL=
 VITE_FII_API_DETAILS_PATH=/api/fii/:ticker
 VITE_FII_API_DIVIDENDS_PATH=/api/dividendos/:month
-VITE_FII_API_TOKEN=
-VITE_FII_API_TOKEN_HEADER=Authorization
-VITE_FII_API_TOKEN_PREFIX=Bearer
-VITE_FII_API_PROXY_TARGET=http://127.0.0.1:8000
+
+FII_API_PROXY_TARGET=http://127.0.0.1:8000
+FII_API_UPSTREAM_BASE_URL=
+FII_API_UPSTREAM_DETAILS_PATH=/fii/:ticker
+FII_API_UPSTREAM_DIVIDENDS_PATH=/dividendos/:month
+FII_API_TOKEN=
+FII_API_TOKEN_HEADER=Authorization
+FII_API_TOKEN_PREFIX=Bearer
+FII_API_TIMEOUT_MS=10000
+FII_API_ALLOWED_ORIGINS=
+FII_API_RATE_LIMIT_WINDOW_MS=60000
+FII_API_RATE_LIMIT_MAX_REQUESTS=120
 ```
 
 Notas:
-- `VITE_FII_API_BASE_URL`: deixe vazio no dev para usar o proxy do Vite (evita CORS). Em producao, use a URL da API na Vercel (ex.: `https://sua-api.vercel.app`).
+- `VITE_FII_API_BASE_URL`: base publica usada pelo frontend. Deixe vazio para usar o mesmo dominio do app (`/api/...`).
 - `VITE_FII_API_DETAILS_PATH`: rota usada pelo front.
 - `VITE_FII_API_DIVIDENDS_PATH`: rota usada para consultar proventos por mes (o front converte `YYYY-MM` para nome do mes, ex.: `marco`).
-- `VITE_FII_API_TOKEN`: token exigido pela API.
-- `VITE_FII_API_TOKEN_HEADER`: nome do header de autenticacao (padrao `Authorization`).
-- `VITE_FII_API_TOKEN_PREFIX`: prefixo do token (padrao `Bearer`; deixe vazio para enviar token puro).
-- `VITE_FII_API_PROXY_TARGET`: host real da sua API local.
+- `FII_API_PROXY_TARGET`: host real da API no `npm run dev` (proxy do Vite, server-side).
+- `FII_API_UPSTREAM_BASE_URL`: base da API real consumida pelo backend/proxy em producao.
+- `FII_API_UPSTREAM_DETAILS_PATH`: caminho de detalhes no upstream.
+- `FII_API_UPSTREAM_DIVIDENDS_PATH`: caminho de dividendos no upstream.
+- `FII_API_TOKEN`: segredo da API (somente servidor; nunca usar `VITE_`).
+- `FII_API_TOKEN_HEADER`: header da autenticacao server-side.
+- `FII_API_TOKEN_PREFIX`: prefixo do token server-side.
+- `FII_API_TIMEOUT_MS`: timeout da chamada upstream em ms.
+- `FII_API_ALLOWED_ORIGINS`: lista de origens permitidas para CORS separada por virgula (ex.: `https://monor.me,https://www.monor.me`).
+- `FII_API_RATE_LIMIT_WINDOW_MS`: janela do rate limit em ms.
+- `FII_API_RATE_LIMIT_MAX_REQUESTS`: maximo de requests por IP e rota dentro da janela.
 - Exemplo detalhes (dev): `/api/fii/HGLG11` (proxy para `http://127.0.0.1:8000/fii/HGLG11`).
 - Exemplo proventos (dev): `/api/dividendos/marco` (proxy para `http://127.0.0.1:8000/dividendos/marco`).
+
+Seguranca:
+- O frontend nao envia mais token de API.
+- A autenticacao da API de mercado fica apenas no servidor (`api/` e proxy do Vite em dev).
+- O backend aplica allowlist de origem (`FII_API_ALLOWED_ORIGINS`) e rate limit por IP/rota.
+- Qualquer token previamente usado como `VITE_FII_API_TOKEN` deve ser rotacionado imediatamente.
+
+Persistencia de confirmacao manual de proventos:
+- As confirmacoes de "comprei antes da data-com" agora sao salvas no Supabase por usuario.
+- Para habilitar, aplique no SQL Editor o schema atualizado em `docs/schema_inicial.sql` (tabela `dividend_eligibility_overrides` + RLS).
+
+Checklist de deploy seguro (Vercel):
+1. Rotacione o token antigo no provedor da API de mercado.
+2. Em `Project Settings > Environment Variables`, configure apenas no servidor:
+	- `FII_API_UPSTREAM_BASE_URL`
+	- `FII_API_UPSTREAM_DETAILS_PATH`
+	- `FII_API_UPSTREAM_DIVIDENDS_PATH`
+	- `FII_API_TOKEN`
+	- `FII_API_TOKEN_HEADER`
+	- `FII_API_TOKEN_PREFIX`
+	- `FII_API_TIMEOUT_MS`
+	- `FII_API_ALLOWED_ORIGINS`
+	- `FII_API_RATE_LIMIT_WINDOW_MS`
+	- `FII_API_RATE_LIMIT_MAX_REQUESTS`
+3. Nao configure `FII_API_TOKEN` como `VITE_*`.
+4. Faça deploy e valide os endpoints:
+	- `GET /api/fii/HGLG11`
+	- `GET /api/dividendos/marco`
 
 ## 🔐 Login (Supabase)
 

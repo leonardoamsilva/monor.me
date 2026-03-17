@@ -121,6 +121,19 @@ create trigger trg_user_settings_updated_at
 before update on public.user_settings
 for each row execute function public.set_updated_at();
 
+create table if not exists public.dividend_eligibility_overrides (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  override_key text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint dividend_eligibility_overrides_user_key_unique unique (user_id, override_key)
+);
+
+create trigger trg_dividend_eligibility_overrides_updated_at
+before update on public.dividend_eligibility_overrides
+for each row execute function public.set_updated_at();
+
 -- =========================
 -- Planos e assinaturas
 -- =========================
@@ -207,6 +220,7 @@ create table if not exists public.audit_events (
 
 create index if not exists portfolios_user_id_idx on public.portfolios(user_id);
 create index if not exists portfolio_positions_portfolio_id_idx on public.portfolio_positions(portfolio_id);
+create index if not exists dividend_eligibility_overrides_user_id_idx on public.dividend_eligibility_overrides(user_id);
 create index if not exists subscriptions_user_id_idx on public.subscriptions(user_id);
 create index if not exists subscription_events_subscription_id_idx on public.subscription_events(subscription_id);
 create index if not exists audit_events_user_id_idx on public.audit_events(user_id);
@@ -219,6 +233,7 @@ alter table public.profiles enable row level security;
 alter table public.portfolios enable row level security;
 alter table public.portfolio_positions enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.dividend_eligibility_overrides enable row level security;
 alter table public.plans enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.entitlements enable row level security;
@@ -337,6 +352,28 @@ create policy user_settings_update_own on public.user_settings
 for update to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
+
+-- Dividend eligibility overrides
+drop policy if exists dividend_eligibility_overrides_select_own on public.dividend_eligibility_overrides;
+create policy dividend_eligibility_overrides_select_own on public.dividend_eligibility_overrides
+for select to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists dividend_eligibility_overrides_insert_own on public.dividend_eligibility_overrides;
+create policy dividend_eligibility_overrides_insert_own on public.dividend_eligibility_overrides
+for insert to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists dividend_eligibility_overrides_update_own on public.dividend_eligibility_overrides;
+create policy dividend_eligibility_overrides_update_own on public.dividend_eligibility_overrides
+for update to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists dividend_eligibility_overrides_delete_own on public.dividend_eligibility_overrides;
+create policy dividend_eligibility_overrides_delete_own on public.dividend_eligibility_overrides
+for delete to authenticated
+using (user_id = auth.uid());
 
 -- Plans / Entitlements: leitura publica (landing/precos).
 drop policy if exists plans_select_public on public.plans;

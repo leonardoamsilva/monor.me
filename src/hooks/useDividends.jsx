@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchMonthlyDividends } from '../services/dividendsApi';
 import { getItem, listKeys, removeItem, setItem } from '../services/storage';
+import { useAuth } from '../contexts/useAuth';
+import {
+  deleteDividendEligibilityOverride,
+  deleteDividendEligibilityOverridesByKeys,
+  fetchDividendEligibilityOverrides,
+  upsertDividendEligibilityOverride,
+} from '../services/dividendEligibilityStore';
 
 const DIVIDENDS_CACHE_PREFIX = 'monor:dividends:';
-const ELIGIBILITY_OVERRIDES_KEY = 'monor:eligibility-overrides';
-const LEGACY_ELIGIBILITY_OVERRIDES_KEY = 'monor:dividends:eligibility-overrides';
-const ELIGIBILITY_OVERRIDES_MIGRATION_KEY = 'monor:eligibility-overrides:migrated-v2';
 
 function getTodayCacheKey() {
   const now = new Date();
@@ -87,35 +91,6 @@ function monthFromDate(value) {
   return null;
 }
 
-function readEligibilityOverrides() {
-  try {
-    // One-time retroactive cleanup: drop all old manual confirmations.
-    const migrationDone = getItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, { fallbackToDevice: true }) === '1';
-    if (!migrationDone) {
-      removeItem(ELIGIBILITY_OVERRIDES_KEY);
-      removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
-      setItem(ELIGIBILITY_OVERRIDES_MIGRATION_KEY, '1');
-      return {};
-    }
-
-    const raw =
-      getItem(ELIGIBILITY_OVERRIDES_KEY, { fallbackToDevice: true }) ??
-      getItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY, { fallbackToDevice: true });
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed;
-  } catch {
-    return {};
-  }
-}
-
-function writeEligibilityOverrides(overrides) {
-  setItem(ELIGIBILITY_OVERRIDES_KEY, JSON.stringify(overrides));
-  removeItem(LEGACY_ELIGIBILITY_OVERRIDES_KEY);
-}
-
 function buildEligibilityOverrideKey(row, monthReference = '') {
   const ticker = String(row?.ticker ?? '').trim().toUpperCase();
   const month =
@@ -137,6 +112,12 @@ function extractTickerFromOverrideKey(key) {
 
 function cleanupOverridesByActivePositions(overrides, activeTickers) {
   if (!overrides || typeof overrides !== 'object') return {};
+
+  // During bootstrap, the portfolio can be temporarily empty before hydration.
+  // Avoid destructive cleanup in this transient state to preserve confirmations.
+  if (!(activeTickers instanceof Set) || activeTickers.size === 0) {
+    return overrides;
+  }
 
   const next = {};
   Object.entries(overrides).forEach(([key, value]) => {
@@ -202,6 +183,7 @@ function getEarliestEntryDate(positionByTicker) {
 }
 
 export function useDividends(fiis, selectedMonth) {
+  const { user, isAuthenticated } = useAuth();
   const [rows, setRows] = useState([]);
   const [monthlyPortfolioTotal, setMonthlyPortfolioTotal] = useState(0);
   const [yearlyPortfolioTotal, setYearlyPortfolioTotal] = useState(0);
@@ -210,7 +192,8 @@ export function useDividends(fiis, selectedMonth) {
   const [allTimePeriodLabel, setAllTimePeriodLabel] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [eligibilityOverrides, setEligibilityOverrides] = useState(() => readEligibilityOverrides());
+  const [eligibilityOverrides, setEligibilityOverrides] = useState({});
+  const [overridesLoaded, setOverridesLoaded] = useState(false);
 
   const positionByTicker = useMemo(() => {
     const map = new Map();
@@ -240,6 +223,43 @@ export function useDividends(fiis, selectedMonth) {
   const entryDate = useMemo(() => getEarliestEntryDate(positionByTicker), [positionByTicker]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadOverrides() {
+      if (!isAuthenticated || !user?.id) {
+        if (!cancelled) {
+          setEligibilityOverrides({});
+          setOverridesLoaded(true);
+        }
+        return;
+      }
+
+      setOverridesLoaded(false);
+
+      try {
+        const remoteOverrides = await fetchDividendEligibilityOverrides(user.id);
+        if (cancelled) return;
+        setEligibilityOverrides(remoteOverrides);
+      } catch {
+        if (cancelled) return;
+        setEligibilityOverrides({});
+      } finally {
+        if (!cancelled) {
+          setOverridesLoaded(true);
+        }
+      }
+    }
+
+    loadOverrides();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.id]);
+
+  useEffect(() => {
+    if (!overridesLoaded || !isAuthenticated || !user?.id) return;
+
     setEligibilityOverrides((previous) => {
       const cleaned = cleanupOverridesByActivePositions(previous, activeTickers);
       const previousKeys = Object.keys(previous);
@@ -249,10 +269,14 @@ export function useDividends(fiis, selectedMonth) {
         return previous;
       }
 
-      writeEligibilityOverrides(cleaned);
+      const removedKeys = previousKeys.filter((key) => !cleaned[key]);
+      if (removedKeys.length > 0) {
+        deleteDividendEligibilityOverridesByKeys(user.id, removedKeys).catch(() => {});
+      }
+
       return cleaned;
     });
-  }, [activeTickers]);
+  }, [activeTickers, isAuthenticated, overridesLoaded, user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -365,35 +389,62 @@ export function useDividends(fiis, selectedMonth) {
     };
   }, [eligibilityOverrides, entryDate, positionByTicker, selectedMonth]);
 
-  function confirmDividendEligibility(row, monthReference = selectedMonth) {
+  async function confirmDividendEligibility(row, monthReference = selectedMonth) {
     const key = buildEligibilityOverrideKey(row, monthReference);
     const ticker = String(row?.ticker ?? '').trim().toUpperCase();
     const position = positionByTicker.get(ticker);
     if (!key || Number(position?.quotas ?? 0) <= 0) return;
 
-    setEligibilityOverrides((previous) => {
-      const next = {
-        ...previous,
-        [key]: true,
-      };
+    const normalizedKey = String(key).toUpperCase();
 
-      writeEligibilityOverrides(next);
-      return next;
+    setEligibilityOverrides((previous) => {
+      if (previous[normalizedKey]) return previous;
+      return {
+        ...previous,
+        [normalizedKey]: true,
+      };
     });
+
+    if (!isAuthenticated || !user?.id) return;
+
+    try {
+      await upsertDividendEligibilityOverride(user.id, normalizedKey);
+    } catch {
+      setEligibilityOverrides((previous) => {
+        if (!previous[normalizedKey]) return previous;
+        const next = { ...previous };
+        delete next[normalizedKey];
+        return next;
+      });
+      throw new Error('Nao foi possivel salvar a confirmacao de provento agora.');
+    }
   }
 
-  function revokeDividendEligibility(row, monthReference = selectedMonth) {
+  async function revokeDividendEligibility(row, monthReference = selectedMonth) {
     const key = buildEligibilityOverrideKey(row, monthReference);
     if (!key) return;
 
+    const normalizedKey = String(key).toUpperCase();
+
     setEligibilityOverrides((previous) => {
-      if (!Object.prototype.hasOwnProperty.call(previous, key)) return previous;
+      if (!Object.prototype.hasOwnProperty.call(previous, normalizedKey)) return previous;
 
       const next = { ...previous };
-      delete next[key];
-      writeEligibilityOverrides(next);
+      delete next[normalizedKey];
       return next;
     });
+
+    if (!isAuthenticated || !user?.id) return;
+
+    try {
+      await deleteDividendEligibilityOverride(user.id, normalizedKey);
+    } catch {
+      setEligibilityOverrides((previous) => ({
+        ...previous,
+        [normalizedKey]: true,
+      }));
+      throw new Error('Nao foi possivel remover a confirmacao de provento agora.');
+    }
   }
 
   return {

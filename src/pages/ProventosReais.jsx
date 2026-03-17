@@ -87,9 +87,12 @@ function ProventosReais() {
 
     try {
       await withMinDelay(async () => {
-        confirmDividendEligibility(pendingConfirmationRow, activeMonth);
+        await confirmDividendEligibility(pendingConfirmationRow, activeMonth);
         setPendingConfirmationRow(null);
       }, 450);
+    } catch (error) {
+      const message = String(error?.message ?? '').trim();
+      window.alert(message || 'Nao foi possivel confirmar o provento agora.');
     } finally {
       setManualActionLoading(false);
     }
@@ -101,9 +104,12 @@ function ProventosReais() {
 
     try {
       await withMinDelay(async () => {
-        revokeDividendEligibility(row, activeMonth);
+        await revokeDividendEligibility(row, activeMonth);
         setPendingRevokeRow(null);
       }, 380);
+    } catch (error) {
+      const message = String(error?.message ?? '').trim();
+      window.alert(message || 'Nao foi possivel desfazer a confirmacao agora.');
     } finally {
       setManualActionLoading(false);
     }

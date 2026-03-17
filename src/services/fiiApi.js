@@ -1,5 +1,3 @@
-import { buildApiHeaders } from './apiClient';
-
 const API_BASE = (import.meta.env.VITE_FII_API_BASE_URL ?? '').replace(/\/$/, '');
 const DETAILS_PATH_TEMPLATE = import.meta.env.VITE_FII_API_DETAILS_PATH ?? '/api/fii/:ticker';
 
@@ -61,9 +59,7 @@ function normalizeDetails(payload) {
 
 export async function fetchFiiDetails(ticker) {
   try {
-    const res = await fetch(buildDetailsUrl(ticker), {
-      headers: buildApiHeaders(),
-    });
+    const res = await fetch(buildDetailsUrl(ticker));
     if (!res.ok) return null;
     const data = await res.json();
     return normalizeDetails(data);
