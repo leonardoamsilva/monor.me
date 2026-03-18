@@ -7,8 +7,8 @@ function LoadingModal({ open, title = 'carregando', description = 'aguarde um in
 
   useEffect(() => {
     if (open) {
-      setShouldRender(true);
       const frameId = window.requestAnimationFrame(() => {
+        setShouldRender(true);
         setVisible(true);
       });
 
@@ -17,12 +17,15 @@ function LoadingModal({ open, title = 'carregando', description = 'aguarde um in
       };
     }
 
-    setVisible(false);
+    const closeFrameId = window.requestAnimationFrame(() => {
+      setVisible(false);
+    });
     const timeoutId = window.setTimeout(() => {
       setShouldRender(false);
     }, 180);
 
     return () => {
+      window.cancelAnimationFrame(closeFrameId);
       window.clearTimeout(timeoutId);
     };
   }, [open]);

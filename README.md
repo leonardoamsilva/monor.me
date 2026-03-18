@@ -117,11 +117,13 @@ Para autenticar usuarios na rota `/login`, configure no `.env`:
 ```bash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
+VITE_SUPABASE_REDIRECT_TO=
 ```
 
 Notas:
 - `VITE_SUPABASE_URL`: URL do seu projeto Supabase.
 - `VITE_SUPABASE_ANON_KEY`: chave anon publica do Supabase.
+- `VITE_SUPABASE_REDIRECT_TO`: opcional. Define o redirect exato do OAuth (ex.: `http://192.168.0.10:5173/app` para teste no celular).
 - Sem essas variaveis, o botao de login fica desabilitado e a tela mostra aviso de configuracao.
 - As rotas `/app/*` estao protegidas e redirecionam para `/login` quando nao ha sessao valida.
 - Estrategia atual: login inicial apenas com Google (sem cadastro por email/senha na UI).
@@ -134,11 +136,13 @@ Para usar `continuar com Google` na rota `/login`:
 2. Configure `Client ID` e `Client Secret` do Google OAuth.
 3. Em `Auth > URL Configuration`, adicione o redirect:
 	- `http://localhost:5173/app` (desenvolvimento)
+	- `http://<IP-DA-SUA-MAQUINA>:5173/app` (teste pelo celular na rede local)
 	- URL de producao equivalente, ex.: `https://seu-dominio.com/app`
 4. No Google Cloud Console, adicione como Authorized redirect URI o callback do Supabase:
 	- `https://<project-ref>.supabase.co/auth/v1/callback`
 
 O frontend ja inicia o OAuth com `redirectTo = <origem>/app`.
+Com `VITE_SUPABASE_REDIRECT_TO`, voce pode forcar outro host de callback (ex.: IP local) para evitar erro de conexao recusada no celular.
 
 ## 🛣️ Proximos Passos (usuarios e planos)
 

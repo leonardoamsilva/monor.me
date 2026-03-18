@@ -63,6 +63,20 @@ function PublicOnly({ children }) {
   return children;
 }
 
+function HomeRoute() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <FullscreenStatus title='carregando...' message='checando sessao atual.' />;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to='/app' replace />;
+  }
+
+  return <Landing />;
+}
+
 function ProductApp() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -106,6 +120,7 @@ function ProductApp() {
             <Route path='carteira' element={<Carteira />} />
             <Route path='proventos' element={<ProventosReais />} />
             <Route path='simulador-aportes' element={<SimuladorAportes />} />
+            <Route path='calculadora' element={<Navigate to='/app/simulador-aportes' replace />} />
             <Route path='settings' element={<Settings />} />
             <Route path='*' element={<Navigate to='/app' replace />} />
           </Routes>
@@ -119,7 +134,7 @@ function ProductApp() {
 function AppContent() {
   return (
     <Routes>
-      <Route path='/' element={<Landing />} />
+      <Route path='/' element={<HomeRoute />} />
       <Route
         path='/login'
         element={(
@@ -140,6 +155,7 @@ function AppContent() {
       <Route path='/carteira' element={<Navigate to='/app/carteira' replace />} />
       <Route path='/proventos' element={<Navigate to='/app/proventos' replace />} />
       <Route path='/simulador-aportes' element={<Navigate to='/app/simulador-aportes' replace />} />
+      <Route path='/calculadora' element={<Navigate to='/app/simulador-aportes' replace />} />
       <Route path='/settings' element={<Navigate to='/app/settings' replace />} />
 
       <Route path='*' element={<Navigate to='/' replace />} />

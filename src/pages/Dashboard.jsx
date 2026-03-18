@@ -5,6 +5,8 @@ import { useDividends } from "../hooks/useDividends";
 import { useCurrentMonth } from "../hooks/useCurrentMonth";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/format";
+import { useAuth } from "../contexts/useAuth";
+import { useNavigate } from "react-router-dom";
 
 function normalizeFiiType(value) {
   const normalized = String(value ?? "").trim();
@@ -12,6 +14,8 @@ function normalizeFiiType(value) {
 }
 
 function Dashboard() {
+  const navigate = useNavigate();
+  const { userName } = useAuth();
   const { fiis, refreshingQuotes, refreshFiisQuotes } = useFiis();
   const { settings } = useSettings();
   const currentMonth = useCurrentMonth();
@@ -71,7 +75,7 @@ function Dashboard() {
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <header className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold">dashboard</h1>
-        <p className="text-muted">bem-vindo ao monor.me</p>
+        <p className="text-muted">bem-vindo, {userName}</p>
         <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <p className="text-xs text-muted">
             cotações: {refreshingQuotes ? "atualizando..." : "sincronização diária automática"}
@@ -83,6 +87,13 @@ function Dashboard() {
             className="px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             atualizar agora (teste)
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/app/simulador-aportes")}
+            className="px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-text hover:bg-surface-hover transition-colors"
+          >
+            abrir calculadora
           </button>
         </div>
       </header>

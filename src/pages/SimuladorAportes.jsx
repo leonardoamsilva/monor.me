@@ -41,25 +41,18 @@ const SIMULATOR_OPTIONS = [
   },
   {
     id: "weighted-allocation",
-    name: "alocação por percentual",
-    description: "divide aporte por peso e calcula cotas",
+    name: "calculadora de alocação",
+    description: "divide o aporte por percentual e calcula cotas",
     status: "ready",
-  },
-  {
-    id: "target-income",
-    name: "meta por ativo",
-    description: "quanto precisa investir para atingir renda alvo",
-    status: "coming-soon",
-  },
-  {
-    id: "portfolio-projection",
-    name: "carteira atual",
-    description: "projeção usando os ativos já cadastrados",
-    status: "coming-soon",
   },
 ];
 
-function calculateCompoundInterest({ initialAmount, monthlyContribution, monthlyRate, months }) {
+function calculateCompoundInterest({
+  initialAmount,
+  monthlyContribution,
+  monthlyRate,
+  months,
+}) {
   const monthlyRateDecimal = monthlyRate / 100;
 
   if (months <= 0) {
@@ -70,26 +63,6 @@ function calculateCompoundInterest({ initialAmount, monthlyContribution, monthly
       monthlySnapshots: [],
     };
   }
-
-  if (monthlyRateDecimal === 0) {
-    const investedAmount = initialAmount + monthlyContribution * months;
-    return {
-      finalAmount: investedAmount,
-      investedAmount,
-      interestAmount: 0,
-      monthlySnapshots: Array.from({ length: months }, (_, index) => ({
-        month: index + 1,
-        amount: initialAmount + monthlyContribution * (index + 1),
-        invested: initialAmount + monthlyContribution * (index + 1),
-      })),
-    };
-  }
-
-  const compoundedInitial = initialAmount * (1 + monthlyRateDecimal) ** months;
-  const compoundedContributions = monthlyContribution
-    * (((1 + monthlyRateDecimal) ** months - 1) / monthlyRateDecimal);
-  const finalAmount = compoundedInitial + compoundedContributions;
-  const investedAmount = initialAmount + monthlyContribution * months;
 
   const monthlySnapshots = [];
   let runningAmount = initialAmount;
@@ -102,6 +75,9 @@ function calculateCompoundInterest({ initialAmount, monthlyContribution, monthly
       invested: initialAmount + monthlyContribution * month,
     });
   }
+
+  const finalAmount = runningAmount;
+  const investedAmount = initialAmount + monthlyContribution * months;
 
   return {
     finalAmount,
@@ -1007,6 +983,120 @@ function clampAssetCount(value) {
   return Math.max(1, Math.min(20, value));
 }
 
+function formatSignedPercent(value) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const sign = safeValue > 0 ? "+" : "";
+  return `${sign}${safeValue.toFixed(1)}%`;
+}
+
+function buildBuyAllOrientation({ totalAmount, assets }) {
+  const validAssets = assets
+    .map((asset, index) => ({
+      index,
+      ticker: String(asset.ticker ?? "").trim().toUpperCase(),
+      weight: Number(asset.weight) || 0,
+      price: Number(asset.price) || 0,
+    }))
+    .filter((asset) => asset.ticker && asset.price > 0);
+
+  if (validAssets.length === 0) {
+    return {
+      canSuggest: false,
+      reason: "preencha tickers válidos com preço carregado para gerar orientação.",
+      rows: [],
+    };
+  }
+
+  const minimumRequired = validAssets.reduce((sum, asset) => sum + asset.price, 0);
+
+  if (totalAmount < minimumRequired) {
+    return {
+      canSuggest: false,
+      reason: `valor insuficiente para comprar 1 cota de cada ativo. mínimo: ${formatCurrency(minimumRequired)}.`,
+      rows: validAssets.map((asset) => ({
+        ...asset,
+        suggestedAmount: 0,
+        suggestedWeight: 0,
+      })),
+    };
+  }
+
+  const weightBase = validAssets.reduce((sum, asset) => sum + Math.max(asset.weight, 0), 0);
+  const remainingAmount = Math.max(totalAmount - minimumRequired, 0);
+
+  const rows = validAssets.map((asset) => {
+    const normalizedBaseWeight = weightBase > 0
+      ? Math.max(asset.weight, 0) / weightBase
+      : 1 / validAssets.length;
+    const suggestedAmount = asset.price + remainingAmount * normalizedBaseWeight;
+    const suggestedWeight = totalAmount > 0 ? (suggestedAmount / totalAmount) * 100 : 0;
+
+    return {
+      ...asset,
+      suggestedAmount,
+      suggestedWeight,
+    };
+  });
+
+  return {
+    canSuggest: true,
+    reason: "orientação calculada para garantir ao menos 1 cota de cada ativo e distribuir o restante.",
+    rows,
+  };
+}
+
+function buildEqualBuyAllOrientation({ totalAmount, assets }) {
+  const validAssets = assets
+    .map((asset, index) => ({
+      index,
+      ticker: String(asset.ticker ?? "").trim().toUpperCase(),
+      price: Number(asset.price) || 0,
+    }))
+    .filter((asset) => asset.ticker && asset.price > 0);
+
+  if (validAssets.length === 0) {
+    return {
+      canSuggest: false,
+      reason: "preencha tickers válidos com preço carregado para gerar orientação.",
+      rows: [],
+    };
+  }
+
+  const minimumRequired = validAssets.reduce((sum, asset) => sum + asset.price, 0);
+
+  if (totalAmount < minimumRequired) {
+    return {
+      canSuggest: false,
+      reason: `valor insuficiente para comprar 1 cota de cada ativo. mínimo: ${formatCurrency(minimumRequired)}.`,
+      rows: validAssets.map((asset) => ({
+        ...asset,
+        suggestedAmount: 0,
+        suggestedWeight: 0,
+      })),
+    };
+  }
+
+  const remainingAmount = Math.max(totalAmount - minimumRequired, 0);
+  const extraPerAsset = validAssets.length > 0 ? remainingAmount / validAssets.length : 0;
+
+  const rows = validAssets.map((asset) => {
+    const suggestedAmount = asset.price + extraPerAsset;
+    const suggestedWeight = totalAmount > 0 ? (suggestedAmount / totalAmount) * 100 : 0;
+
+    return {
+      ...asset,
+      suggestedAmount,
+      suggestedWeight,
+    };
+  });
+
+  return {
+    canSuggest: true,
+    reason: "orientação equiponderada para comprar 1 cota de cada ativo e distribuir o restante igualmente.",
+    rows,
+  };
+}
+
 function calculateAllocationScore({ quantities, targetAmounts, prices, totalAmount }) {
   const spentByAsset = quantities.map((quantity, index) => quantity * prices[index]);
   const spentTotal = spentByAsset.reduce((sum, value) => sum + value, 0);
@@ -1026,7 +1116,7 @@ function calculateAllocationScore({ quantities, targetAmounts, prices, totalAmou
 
 function findOptimizedQuantities({ totalAmount, weights, prices }) {
   const targetAmounts = weights.map((weight) => totalAmount * (weight / 100));
-  const initialQuantities = targetAmounts.map((targetAmount, index) => {
+  const floorByTarget = targetAmounts.map((targetAmount, index) => {
     const price = prices[index];
     if (price <= 0) return 0;
     return Math.max(0, Math.floor(targetAmount / price));
@@ -1038,26 +1128,67 @@ function findOptimizedQuantities({ totalAmount, weights, prices }) {
     .map((item) => item.index);
 
   if (activeIndexes.length === 0) {
-    return {
-      quantities: initialQuantities,
+    const baseScore = calculateAllocationScore({
+      quantities: floorByTarget,
       targetAmounts,
+      prices,
+      totalAmount,
+    });
+    return {
+      quantities: floorByTarget,
+      targetAmounts,
+      candidates: [
+        {
+          quantities: floorByTarget,
+          spentTotal: baseScore.spentTotal,
+          leftover: baseScore.leftover,
+          score: baseScore.score,
+        },
+      ],
     };
   }
 
-  const maxIterations = Math.min(160, activeIndexes.length * 22 + 18);
-  const beamWidth = Math.min(64, activeIndexes.length * 8 + 12);
+  const initialStates = [floorByTarget, prices.map(() => 0)];
+
+  for (const index of activeIndexes) {
+    const onlyOneAsset = prices.map(() => 0);
+    onlyOneAsset[index] = Math.floor(totalAmount / prices[index]);
+    initialStates.push(onlyOneAsset);
+  }
+
+  const maxIterations = Math.min(220, activeIndexes.length * 28 + 24);
+  const beamWidth = Math.min(120, activeIndexes.length * 12 + 24);
   const visited = new Set();
-  let bestState = {
-    quantities: initialQuantities,
+
+  const scoredInitialStates = initialStates
+    .map((quantities) => ({
+      quantities,
+      ...calculateAllocationScore({
+        quantities,
+        targetAmounts,
+        prices,
+        totalAmount,
+      }),
+    }))
+    .filter((state) => state.spentTotal <= totalAmount + 0.00001)
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.leftover !== b.leftover) return a.leftover - b.leftover;
+      return b.spentTotal - a.spentTotal;
+    });
+
+  let bestState = scoredInitialStates[0] ?? {
+    quantities: floorByTarget,
     ...calculateAllocationScore({
-      quantities: initialQuantities,
+      quantities: floorByTarget,
       targetAmounts,
       prices,
       totalAmount,
     }),
   };
 
-  let beam = [bestState];
+  let beam = scoredInitialStates.slice(0, Math.max(12, Math.floor(beamWidth / 2)));
+  if (beam.length === 0) beam = [bestState];
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
     const candidatesMap = new Map();
@@ -1111,6 +1242,34 @@ function findOptimizedQuantities({ totalAmount, weights, prices }) {
             candidatesMap.set(removeKey, removeState);
           }
         }
+
+        for (const fromIndex of activeIndexes) {
+          if (fromIndex === index) continue;
+          if (state.quantities[fromIndex] <= 0) continue;
+
+          const swapQuantities = [...state.quantities];
+          swapQuantities[index] += 1;
+          swapQuantities[fromIndex] -= 1;
+
+          const swapScore = calculateAllocationScore({
+            quantities: swapQuantities,
+            targetAmounts,
+            prices,
+            totalAmount,
+          });
+
+          if (swapScore.spentTotal <= totalAmount + 0.00001) {
+            const swapKey = swapQuantities.join("|");
+            const swapState = {
+              quantities: swapQuantities,
+              ...swapScore,
+            };
+            const existing = candidatesMap.get(swapKey);
+            if (!existing || swapState.score < existing.score) {
+              candidatesMap.set(swapKey, swapState);
+            }
+          }
+        }
       }
     }
 
@@ -1132,15 +1291,39 @@ function findOptimizedQuantities({ totalAmount, weights, prices }) {
     }
   }
 
+  const finalCandidates = [...beam, bestState]
+    .reduce((acc, current) => {
+      const key = current.quantities.join("|");
+      if (!acc.some((candidate) => candidate.key === key)) {
+        acc.push({
+          key,
+          quantities: current.quantities,
+          spentTotal: current.spentTotal,
+          leftover: current.leftover,
+          score: current.score,
+        });
+      }
+      return acc;
+    }, [])
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.leftover !== b.leftover) return a.leftover - b.leftover;
+      return b.spentTotal - a.spentTotal;
+    })
+    .slice(0, 5)
+    .map(({ key, ...candidate }) => candidate);
+
   return {
     quantities: bestState.quantities,
     targetAmounts,
+    candidates: finalCandidates,
   };
 }
 
 function WeightedAllocationSimulator() {
   const [totalAmount, setTotalAmount] = useState(0);
   const [assetsCountInput, setAssetsCountInput] = useState("3");
+  const [orientationStrategy, setOrientationStrategy] = useState("by-current-weights");
   const [activeTickerRowId, setActiveTickerRowId] = useState(null);
   const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
   const nextAssetIdRef = useRef(4);
@@ -1170,8 +1353,21 @@ function WeightedAllocationSimulator() {
 
   const isWeightValid = Math.abs(totalWeight - 100) < 0.0001;
 
+  const optimizedAllocation = useMemo(() => {
+    if (!isWeightValid || totalAmount <= 0) return null;
+
+    const weights = normalizedAssets.map((asset) => asset.weight);
+    const prices = normalizedAssets.map((asset) => Number(asset.price) || 0);
+
+    return findOptimizedQuantities({
+      totalAmount,
+      weights,
+      prices,
+    });
+  }, [isWeightValid, normalizedAssets, totalAmount]);
+
   const allocationRows = useMemo(() => {
-    if (!isWeightValid || totalAmount <= 0) {
+    if (!optimizedAllocation) {
       return normalizedAssets.map((asset) => ({
         ...asset,
         allocatedAmount: 0,
@@ -1181,17 +1377,11 @@ function WeightedAllocationSimulator() {
       }));
     }
 
-    const weights = normalizedAssets.map((asset) => asset.weight);
     const prices = normalizedAssets.map((asset) => Number(asset.price) || 0);
-    const optimized = findOptimizedQuantities({
-      totalAmount,
-      weights,
-      prices,
-    });
 
     return normalizedAssets.map((asset, index) => {
-      const allocatedAmount = optimized.targetAmounts[index] ?? 0;
-      const sharesToBuy = optimized.quantities[index] ?? 0;
+      const allocatedAmount = optimizedAllocation.targetAmounts[index] ?? 0;
+      const sharesToBuy = optimizedAllocation.quantities[index] ?? 0;
       const spentAmount = sharesToBuy * prices[index];
       const remainingAmount = Math.max(allocatedAmount - spentAmount, 0);
 
@@ -1203,7 +1393,39 @@ function WeightedAllocationSimulator() {
         remainingAmount,
       };
     });
-  }, [isWeightValid, normalizedAssets, totalAmount]);
+  }, [normalizedAssets, optimizedAllocation]);
+
+  const allocationCandidates = useMemo(() => {
+    if (!optimizedAllocation?.candidates) return [];
+
+    const prices = normalizedAssets.map((asset) => Number(asset.price) || 0);
+    const targetAmounts = optimizedAllocation.targetAmounts ?? [];
+
+    return optimizedAllocation.candidates.map((candidate, index) => {
+      const deviationSummary = candidate.quantities
+        .map((quantity, assetIndex) => {
+          const label = normalizedAssets[assetIndex]?.ticker || `ativo ${assetIndex + 1}`;
+          const spentAmount = quantity * prices[assetIndex];
+          const targetAmount = targetAmounts[assetIndex] ?? 0;
+          const deviationPercent = targetAmount > 0
+            ? ((spentAmount - targetAmount) / targetAmount) * 100
+            : 0;
+
+          return `${label}: ${formatSignedPercent(deviationPercent)}`;
+        })
+        .join(" | ");
+
+      return {
+        id: index + 1,
+        quantities: candidate.quantities,
+        spentTotal: candidate.spentTotal,
+        leftover: candidate.leftover,
+        score: candidate.score,
+        deviationSummary,
+        isSelected: candidate.quantities.join("|") === optimizedAllocation.quantities.join("|"),
+      };
+    });
+  }, [normalizedAssets, optimizedAllocation]);
 
   const totalAllocatedByWeight = useMemo(
     () => allocationRows.reduce((sum, row) => sum + row.allocatedAmount, 0),
@@ -1233,6 +1455,20 @@ function WeightedAllocationSimulator() {
     [allocationRows]
   );
 
+  const buyAllOrientation = useMemo(
+    () => buildBuyAllOrientation({ totalAmount, assets: normalizedAssets }),
+    [normalizedAssets, totalAmount]
+  );
+
+  const equalBuyAllOrientation = useMemo(
+    () => buildEqualBuyAllOrientation({ totalAmount, assets: normalizedAssets }),
+    [normalizedAssets, totalAmount]
+  );
+
+  const selectedOrientation = orientationStrategy === "equal-buy-all"
+    ? equalBuyAllOrientation
+    : buyAllOrientation;
+
   function updateAsset(assetId, patch) {
     setAssets((currentAssets) =>
       currentAssets.map((asset) => (asset.id === assetId ? { ...asset, ...patch } : asset))
@@ -1258,6 +1494,8 @@ function WeightedAllocationSimulator() {
   }
 
   useEffect(() => {
+    const pendingRequests = [];
+
     for (const asset of assets) {
       const normalizedTicker = asset.ticker.trim().toUpperCase();
       if (!normalizedTicker) continue;
@@ -1267,17 +1505,11 @@ function WeightedAllocationSimulator() {
       const requestToken = `${asset.id}-${Date.now()}-${Math.random()}`;
       requestTokenRef.current[asset.id] = requestToken;
 
-      setAssets((currentAssets) =>
-        currentAssets.map((currentAsset) =>
-          currentAsset.id === asset.id
-            ? {
-              ...currentAsset,
-              isLoadingPrice: true,
-              priceError: "",
-            }
-            : currentAsset
-        )
-      );
+      pendingRequests.push({
+        assetId: asset.id,
+        normalizedTicker,
+        requestToken,
+      });
 
       withMinDelay(async () => {
         const details = await fetchFiiDetails(normalizedTicker);
@@ -1295,7 +1527,7 @@ function WeightedAllocationSimulator() {
                   ...currentAsset,
                   price: hasValidPrice ? Number(details.price) : 0,
                   isLoadingPrice: false,
-                  priceError: hasValidPrice ? "" : "preço indisponível para este ticker",
+                    priceError: hasValidPrice ? "" : "preço indisponível para este ticker",
                   lastFetchedTicker: normalizedTicker,
                 }
                 : currentAsset
@@ -1320,6 +1552,29 @@ function WeightedAllocationSimulator() {
           );
         });
     }
+
+    if (pendingRequests.length > 0) {
+      const pendingIds = new Set(pendingRequests.map((item) => item.assetId));
+      const timeoutId = window.setTimeout(() => {
+        setAssets((currentAssets) =>
+          currentAssets.map((currentAsset) =>
+            pendingIds.has(currentAsset.id)
+              ? {
+                ...currentAsset,
+                isLoadingPrice: true,
+                priceError: "",
+              }
+              : currentAsset
+          )
+        );
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    return undefined;
   }, [assets]);
 
   function handleClear() {
@@ -1411,6 +1666,52 @@ function WeightedAllocationSimulator() {
       setActiveTickerRowId(null);
       setHighlightedSuggestionIndex(-1);
     }
+  }
+
+  function applySuggestedOrientationWeights() {
+    if (!selectedOrientation.canSuggest) return;
+
+    const suggestedByIndex = new Map(
+      selectedOrientation.rows.map((row) => [row.index, row.suggestedWeight])
+    );
+
+    const suggestedTotal = selectedOrientation.rows.reduce(
+      (sum, row) => sum + row.suggestedWeight,
+      0
+    );
+
+    const roundedByIndex = new Map();
+    let roundedTotal = 0;
+
+    selectedOrientation.rows.forEach((row, rowIndex) => {
+      const isLast = rowIndex === selectedOrientation.rows.length - 1;
+      let nextValue = row.suggestedWeight;
+
+      if (isLast) {
+        nextValue = Math.max(0, 100 - roundedTotal);
+      }
+
+      const rounded = Number(nextValue.toFixed(2));
+      roundedByIndex.set(row.index, rounded);
+      roundedTotal += rounded;
+    });
+
+    if (suggestedTotal > 0 && roundedTotal !== 100) {
+      const firstRow = selectedOrientation.rows[0];
+      if (firstRow) {
+        const currentFirst = roundedByIndex.get(firstRow.index) ?? 0;
+        roundedByIndex.set(firstRow.index, Number((currentFirst + (100 - roundedTotal)).toFixed(2)));
+      }
+    }
+
+    setAssets((currentAssets) =>
+      currentAssets.map((asset, index) => ({
+        ...asset,
+        weightInput: roundedByIndex.has(index)
+          ? String(roundedByIndex.get(index))
+          : "0",
+      }))
+    );
   }
 
   return (
@@ -1661,6 +1962,117 @@ function WeightedAllocationSimulator() {
                 <Bar dataKey="sobra" name="sobra" fill="#F59E0B" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {allocationCandidates.length > 0 && (
+        <div className="bg-surface border border-border rounded-xl p-6 mt-8">
+          <h2 className="text-xl font-semibold mb-4">combinações avaliadas</h2>
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-bg/60">
+                <tr className="border-b border-border text-left">
+                  <th className="py-3 px-3 text-muted font-medium">rank</th>
+                  <th className="py-3 px-3 text-muted font-medium">quantidade por ativo</th>
+                  <th className="py-3 px-3 text-muted font-medium">desvio do alvo</th>
+                  <th className="py-3 px-3 text-muted font-medium">valor investido</th>
+                  <th className="py-3 px-3 text-muted font-medium">saldo</th>
+                  <th className="py-3 px-3 text-muted font-medium">status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocationCandidates.map((candidate) => (
+                  <tr key={candidate.id} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                    <td className="py-3 px-3">#{candidate.id}</td>
+                    <td className="py-3 px-3">
+                      {candidate.quantities.map((quantity, index) => {
+                        const label = allocationRows[index]?.ticker || `ativo ${index + 1}`;
+                        return `${label}: ${quantity}`;
+                      }).join(" | ")}
+                    </td>
+                    <td className="py-3 px-3 text-xs text-muted">{candidate.deviationSummary}</td>
+                    <td className="py-3 px-3">{formatCurrency(candidate.spentTotal)}</td>
+                    <td className="py-3 px-3">{formatCurrency(candidate.leftover)}</td>
+                    <td className="py-3 px-3">
+                      <span className={candidate.isSelected ? "text-success" : "text-muted"}>
+                        {candidate.isSelected ? "escolhida" : "alternativa"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+              o rank considera proximidade dos pesos e menor sobra, sem ultrapassar o total disponível.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-surface border border-border rounded-xl p-6 mt-8">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-xl font-semibold">orientação de distribuição</h2>
+            <p className="text-sm text-muted mt-1">{selectedOrientation.reason}</p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={applySuggestedOrientationWeights}
+            disabled={!selectedOrientation.canSuggest}
+          >
+            aplicar percentuais sugeridos
+          </Button>
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setOrientationStrategy("by-current-weights")}
+            className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+              orientationStrategy === "by-current-weights"
+                ? "border-accent bg-accent/10 text-text"
+                : "border-border text-muted hover:bg-surface-hover"
+            }`}
+          >
+            por pesos atuais
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrientationStrategy("equal-buy-all")}
+            className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+              orientationStrategy === "equal-buy-all"
+                ? "border-accent bg-accent/10 text-text"
+                : "border-border text-muted hover:bg-surface-hover"
+            }`}
+          >
+            equiponderada
+          </button>
+        </div>
+
+        {selectedOrientation.rows.length > 0 && (
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-bg/60">
+                <tr className="border-b border-border text-left">
+                  <th className="py-3 px-3 text-muted font-medium">ticker</th>
+                  <th className="py-3 px-3 text-muted font-medium">preço</th>
+                  <th className="py-3 px-3 text-muted font-medium">valor sugerido</th>
+                  <th className="py-3 px-3 text-muted font-medium">percentual sugerido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedOrientation.rows.map((row) => (
+                  <tr key={`${row.index}-${row.ticker}`} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                    <td className="py-3 px-3">{row.ticker}</td>
+                    <td className="py-3 px-3">{formatCurrency(row.price)}</td>
+                    <td className="py-3 px-3">{formatCurrency(row.suggestedAmount)}</td>
+                    <td className="py-3 px-3">{row.suggestedWeight.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
