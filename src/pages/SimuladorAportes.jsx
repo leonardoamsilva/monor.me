@@ -1097,6 +1097,133 @@ function buildEqualBuyAllOrientation({ totalAmount, assets }) {
   };
 }
 
+function buildLeftoverSuggestions({ leftoverAmount, allocationRows }) {
+  const candidates = allocationRows
+    .map((row, index) => ({
+      index,
+      ticker: String(row.ticker ?? "").trim().toUpperCase() || `ATIVO ${index + 1}`,
+      price: Number(row.price) || 0,
+    }))
+    .filter((row) => row.price > 0)
+    .sort((a, b) => a.price - b.price);
+
+  if (candidates.length === 0) {
+    return {
+      canSuggest: false,
+      reason: "não há preços válidos para sugerir uso da sobra.",
+      suggestions: [],
+      cheapestPrice: 0,
+    };
+  }
+
+  const cheapestPrice = candidates[0].price;
+  if (leftoverAmount < cheapestPrice) {
+    return {
+      canSuggest: false,
+      reason: `sobra insuficiente para nova compra. menor preço disponível: ${formatCurrency(cheapestPrice)}.`,
+      suggestions: [],
+      cheapestPrice,
+    };
+  }
+
+  const maxIterations = Math.min(180, candidates.length * 28 + 24);
+  const beamWidth = Math.min(80, candidates.length * 10 + 20);
+  const initialQuantities = candidates.map(() => 0);
+  const visited = new Set();
+
+  function scoreState(quantities) {
+    const spent = quantities.reduce((sum, quantity, index) => sum + quantity * candidates[index].price, 0);
+    const leftover = Math.max(leftoverAmount - spent, 0);
+    const distinctAssets = quantities.filter((quantity) => quantity > 0).length;
+    const totalShares = quantities.reduce((sum, quantity) => sum + quantity, 0);
+    const averageTicket = totalShares > 0 ? spent / totalShares : Number.MAX_SAFE_INTEGER;
+
+    return {
+      quantities,
+      spent,
+      leftover,
+      distinctAssets,
+      totalShares,
+      averageTicket,
+    };
+  }
+
+  function compareStates(a, b) {
+    if (a.distinctAssets !== b.distinctAssets) return b.distinctAssets - a.distinctAssets;
+    if (a.totalShares !== b.totalShares) return b.totalShares - a.totalShares;
+    if (a.spent !== b.spent) return b.spent - a.spent;
+    return a.averageTicket - b.averageTicket;
+  }
+
+  let beam = [scoreState(initialQuantities)];
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const nextMap = new Map();
+
+    for (const state of beam) {
+      const stateKey = state.quantities.join("|");
+      if (!visited.has(stateKey)) {
+        visited.add(stateKey);
+        nextMap.set(stateKey, state);
+      }
+
+      for (let index = 0; index < candidates.length; index += 1) {
+        const nextQuantities = [...state.quantities];
+        nextQuantities[index] += 1;
+        const nextState = scoreState(nextQuantities);
+        if (nextState.spent > leftoverAmount + 0.00001) continue;
+
+        const nextKey = nextQuantities.join("|");
+        const existing = nextMap.get(nextKey);
+        if (!existing || compareStates(nextState, existing) < 0) {
+          nextMap.set(nextKey, nextState);
+        }
+      }
+    }
+
+    const nextBeam = [...nextMap.values()]
+      .filter((state) => state.spent <= leftoverAmount + 0.00001)
+      .sort(compareStates)
+      .slice(0, beamWidth);
+
+    if (nextBeam.length === 0) break;
+    beam = nextBeam;
+  }
+
+  const suggestions = beam
+    .filter((state) => state.totalShares > 0)
+    .reduce((acc, state) => {
+      const key = state.quantities.join("|");
+      if (!acc.some((item) => item.key === key)) {
+        acc.push({ key, ...state });
+      }
+      return acc;
+    }, [])
+    .sort(compareStates)
+    .slice(0, 5)
+    .map((state, rank) => ({
+      id: rank + 1,
+      spent: state.spent,
+      leftover: state.leftover,
+      distinctAssets: state.distinctAssets,
+      totalShares: state.totalShares,
+      rows: state.quantities
+        .map((quantity, index) => ({
+          ticker: candidates[index].ticker,
+          quantity,
+          price: candidates[index].price,
+        }))
+        .filter((row) => row.quantity > 0),
+    }));
+
+  return {
+    canSuggest: suggestions.length > 0,
+    reason: "combinações da sobra priorizando ativos mais baratos e maior diversidade de compra.",
+    suggestions,
+    cheapestPrice,
+  };
+}
+
 function calculateAllocationScore({ quantities, targetAmounts, prices, totalAmount }) {
   const spentByAsset = quantities.map((quantity, index) => quantity * prices[index]);
   const spentTotal = spentByAsset.reduce((sum, value) => sum + value, 0);
@@ -1453,6 +1580,11 @@ function WeightedAllocationSimulator() {
           sobra: Number(row.remainingAmount.toFixed(2)),
         })),
     [allocationRows]
+  );
+
+  const leftoverSuggestions = useMemo(
+    () => buildLeftoverSuggestions({ leftoverAmount: totalLeftover, allocationRows }),
+    [allocationRows, totalLeftover]
   );
 
   const buyAllOrientation = useMemo(
@@ -2073,6 +2205,49 @@ function WeightedAllocationSimulator() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-surface border border-border rounded-xl p-6 mt-8">
+        <h2 className="text-xl font-semibold mb-2">sugestão para uso da sobra</h2>
+        <p className="text-sm text-muted mb-4">{leftoverSuggestions.reason}</p>
+
+        {!leftoverSuggestions.canSuggest ? (
+          <p className="text-sm text-muted">
+            sem combinação viável no momento. saldo atual: {formatCurrency(totalLeftover)}.
+          </p>
+        ) : (
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead className="bg-bg/60">
+                <tr className="border-b border-border text-left">
+                  <th className="py-3 px-3 text-muted font-medium">rank</th>
+                  <th className="py-3 px-3 text-muted font-medium">combinação</th>
+                  <th className="py-3 px-3 text-muted font-medium">ativos comprados</th>
+                  <th className="py-3 px-3 text-muted font-medium">cotas adicionais</th>
+                  <th className="py-3 px-3 text-muted font-medium">gasto da sobra</th>
+                  <th className="py-3 px-3 text-muted font-medium">sobra final</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leftoverSuggestions.suggestions.map((suggestion) => (
+                  <tr key={suggestion.id} className="border-b border-border/50 last:border-b-0 hover:bg-bg/30 transition-colors">
+                    <td className="py-3 px-3">#{suggestion.id}</td>
+                    <td className="py-3 px-3 text-sm">
+                      {suggestion.rows.map((row) => `${row.ticker}: +${row.quantity}`).join(" | ")}
+                    </td>
+                    <td className="py-3 px-3">{suggestion.distinctAssets}</td>
+                    <td className="py-3 px-3">{suggestion.totalShares}</td>
+                    <td className="py-3 px-3">{formatCurrency(suggestion.spent)}</td>
+                    <td className="py-3 px-3">{formatCurrency(suggestion.leftover)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted px-3 py-2 border-t border-border bg-bg/40">
+              ranking prioriza comprar mais ativos diferentes, depois maior quantidade de cotas e maior uso do saldo.
+            </p>
           </div>
         )}
       </div>

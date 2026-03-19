@@ -6,7 +6,6 @@ import { useCurrentMonth } from "../hooks/useCurrentMonth";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/format";
 import { useAuth } from "../contexts/useAuth";
-import { useNavigate } from "react-router-dom";
 
 function normalizeFiiType(value) {
   const normalized = String(value ?? "").trim();
@@ -14,7 +13,6 @@ function normalizeFiiType(value) {
 }
 
 function Dashboard() {
-  const navigate = useNavigate();
   const { userName } = useAuth();
   const { fiis, refreshingQuotes, refreshFiisQuotes } = useFiis();
   const { settings } = useSettings();
@@ -87,13 +85,6 @@ function Dashboard() {
             className="px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             atualizar agora (teste)
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/app/simulador-aportes")}
-            className="px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-text hover:bg-surface-hover transition-colors"
-          >
-            abrir calculadora
           </button>
         </div>
       </header>
